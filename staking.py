@@ -172,7 +172,7 @@ _time = 1714670000
 # deploy
 staking = Staking(
     utility_token_addr="0x1111",
-    governance_token_addr="0x2222",
+    governance_token_addr="0x2222",  # TODO: deprecated, move to governance contract
     reward_rate_per_epoch=0.1,
 )
 
