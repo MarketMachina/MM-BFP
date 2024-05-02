@@ -1,2 +1,2 @@
 # BFP
-Blockchain functionality prototyping
+Blockchain functionality prototyping for MarketMachina project
