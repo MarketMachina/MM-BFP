@@ -2,14 +2,18 @@ import time
 from dataclasses import dataclass, field
 
 EPOCH_IN_SECONDS = 60 * 60 * 24 * 7  # 1 week
+MAX_LOCK_DURATION = EPOCH_IN_SECONDS * 52  # ~ 1 year
+MAX_LOCK_AMOUNT = 10**7  # 1% of total supply (or it should be 10 ** 18 * 10 ** 7 ?)
+MAX_REWARD_RATE = 0.1  # 10% per epoch
+MAX_MULTIPLIER_TO_WITHDRAW = 3  # 300% of lock amount
 
 
 @dataclass
 class Stake:
     lock_amount: int = field(default=0)
-    start_time: float = field(default=0)
+    start_time: int = field(default=0)
     lock_duration: int = field(default=0)
-    reward: float = field(default=0)
+    reward: int = field(default=0)
 
 
 class Staking:
@@ -38,20 +42,27 @@ class Staking:
     # setter functions (onlyOwner functions in solidity)
     def set_utility_token_addr(self, utility_token_addr):
         self.utility_token_addr = utility_token_addr
+        print(f"Utility token address set to {utility_token_addr}")
 
     # TODO: deprecated, move to governance contract
     def set_governance_token_addr(self, governance_token_addr):
         self.governance_token_addr = governance_token_addr
+        print(f"Governance token address set to {governance_token_addr}")
 
     def set_reward_rate_per_epoch(self, reward_rate_per_epoch):
-        if reward_rate_per_epoch >= 0:
-            self.reward_rate_per_epoch = reward_rate_per_epoch
-        else:
+        if reward_rate_per_epoch > MAX_REWARD_RATE:
+            print("Error: Reward rate must be less than or equal to 10%.")
+            return
+        if reward_rate_per_epoch < 0:
             print("Error: Reward rate must be non-negative.")
+            return
+        self.reward_rate_per_epoch = reward_rate_per_epoch
+        print(f"Reward rate per epoch set to {reward_rate_per_epoch}")
 
     # TODO: deprecated, move to governance contract
     def set_governance_reward_multiplier(self, governance_reward_multiplier):
         self.governance_reward_multiplier = governance_reward_multiplier
+        print(f"Governance reward multiplier set to {governance_reward_multiplier}")
 
     # getter functions (view functions in solidity)
     def get_utility_token_addr(self):
@@ -71,20 +82,42 @@ class Staking:
 
     # emergency functions (onlyOwner functions in solidity)
     def set_emergency_pause(self, emergency_pause):  # pause all stake functions
-        self.emergency_pause = emergency_pause
+        if self.emergency_pause != emergency_pause:
+            self.emergency_pause = emergency_pause
+            print(f"Emergency pause set to {emergency_pause}")
 
     def set_emergency_withdraw(
         self, emergency_withdraw
     ):  # allow all users to withdraw their stakes
-        self.emergency_withdraw = emergency_withdraw
+        if self.emergency_withdraw != emergency_withdraw:
+            self.emergency_withdraw = emergency_withdraw
+            print(f"Emergency withdraw set to: {emergency_withdraw}")
 
     # utils functions
-    def _get_time_until_next_epoch(self, current_time):
+    def _get_next_epoch_start_time(self, current_time):
         seconds_from_thursday = current_time % EPOCH_IN_SECONDS
         next_epoch_start_time = current_time + EPOCH_IN_SECONDS - seconds_from_thursday
-        # extra layer of protection
-        next_epoch_start_time = max(next_epoch_start_time, current_time)
+        if next_epoch_start_time <= current_time:
+            return 0
         return next_epoch_start_time
+
+    # validate stake parameters
+    def _validate_stake_params(self, lock_amount, lock_duration):
+        if lock_amount <= 0:
+            print("Error: Lock amount must be positive.")
+            return False
+        if lock_amount > MAX_LOCK_AMOUNT:
+            print(
+                "Error: Lock amount must be less than or equal to 1% of total supply."
+            )
+            return False
+        if lock_duration < EPOCH_IN_SECONDS:
+            print("Error: Lock duration must be at least 1 epoch.")
+            return False
+        if lock_duration > MAX_LOCK_DURATION:
+            print("Error: Lock duration must be less than or equal to 52 epochs.")
+            return False
+        return True
 
     # main stake functions
     def stake(self, address, lock_amount, lock_duration):  # lock_duration in seconds
@@ -93,19 +126,14 @@ class Staking:
             print("Error: Emergency pause is active.")
             return
 
-        if lock_amount <= 0:
-            print("Error: Lock amount must be positive.")
+        if not self._validate_stake_params(lock_amount, lock_duration):
             return
 
-        if lock_duration < EPOCH_IN_SECONDS:
-            print("Error: Lock duration must be at least 1 epoch.")
+        current_time = BLOCK_TIMESTAMP  # solidity: block.timestamp
+        next_epoch_start_time = self._get_next_epoch_start_time(current_time)
+        if next_epoch_start_time <= 0:
+            print("Error: Invalid next epoch start time. Please try again.")
             return
-
-        # extra layer of protection
-        lock_duration = min(lock_duration, EPOCH_IN_SECONDS * 52)
-
-        current_time = CURRENT_TIME  # solidity: block.timestamp
-        next_epoch_start_time = self._get_time_until_next_epoch(current_time)
         if address not in self.stakes:  # solidity: stakes[msg.sender].lockAmount == 0
             epoch_num = lock_duration // EPOCH_IN_SECONDS
             _reward = lock_amount * self.reward_rate_per_epoch * epoch_num
@@ -115,17 +143,22 @@ class Staking:
                 lock_duration=epoch_num * EPOCH_IN_SECONDS,
                 reward=_reward,
             )
+            print(f"Stake for {address} created: {self.stakes[address]}")
         else:  # existing stake
             remaining_time = (
                 self.stakes[address].start_time
                 + self.stakes[address].lock_duration
                 - current_time
             )
+            if remaining_time > self.stakes[address].lock_duration + EPOCH_IN_SECONDS:
+                print("Error: Invalid remaining time. Please try again.")
+                return
             if remaining_time > EPOCH_IN_SECONDS:
                 remaining_epoch_num = remaining_time // EPOCH_IN_SECONDS
                 _reward = lock_amount * self.reward_rate_per_epoch * remaining_epoch_num
                 self.stakes[address].lock_amount += lock_amount
                 self.stakes[address].reward += _reward
+                print(f"Stake for {address} updated: {self.stakes[address]}")
             else:
                 print("Error: Cannot deposit to stake nearing or past its end.")
 
@@ -136,34 +169,41 @@ class Staking:
             print("Error: Emergency pause is active.")
             return 0
 
-        # allow all users to withdraw their stakes
+        # allow all users to withdraw their stakes in case of emergency
         if self.emergency_pause and self.emergency_withdraw:
             if address in self.stakes:
                 amount_to_withdraw = self.stakes[address].lock_amount
                 self.stakes.pop(address)
+                print(f"Emergency withdraw for {address}: {amount_to_withdraw}")
                 return amount_to_withdraw
 
         # check if user has stake
         if address not in self.stakes:  # solidity: stakes[msg.sender].lockAmount == 0
+            print(f"Error: No stake found for address {address}.")
             return 0
 
-        current_time = CURRENT_TIME  # solidity: block.timestamp
+        current_time = BLOCK_TIMESTAMP  # solidity: block.timestamp
         if (
             current_time
-            > self.stakes[address].start_time + self.stakes[address].lock_duration
+            <= self.stakes[address].start_time + self.stakes[address].lock_duration
         ):
-            amount_to_withdraw = (
-                self.stakes[address].lock_amount + self.stakes[address].reward
-            )
-            # extra layer of protection
-            amount_to_withdraw = min(
-                amount_to_withdraw, self.stakes[address].lock_amount * 3
-            )
-            self.stakes.pop(address)
-            return amount_to_withdraw
-        else:
             print("Error: Cannot withdraw from stake that has not reached its end.")
             return 0
+
+        amount_to_withdraw = (
+            self.stakes[address].lock_amount + self.stakes[address].reward
+        )
+
+        if (
+            amount_to_withdraw
+            > self.stakes[address].lock_amount * MAX_MULTIPLIER_TO_WITHDRAW
+        ):
+            print("Error: Cannot withdraw more than 300% of lock amount.")
+            return 0
+
+        self.stakes.pop(address)
+        print(f"Withdraw for {address}: {amount_to_withdraw}")
+        return amount_to_withdraw
 
 
 # Tests
@@ -177,8 +217,8 @@ staking = Staking(
 )
 
 print("initial stake\n")
-CURRENT_TIME = _time
-print("Stake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(CURRENT_TIME)))
+BLOCK_TIMESTAMP = _time
+print("Stake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)))
 staking.stake("0x3333", 1000, 60 * 60 * 24 * 7 * 4)
 user_stake = staking.get_stake("0x3333")
 print(user_stake)
@@ -197,50 +237,54 @@ assert user_stake.reward == 400
 print("=====================================\n")
 
 print("additional stake before start time\n")
-CURRENT_TIME = _time + 60 * 60 * 24
+BLOCK_TIMESTAMP = _time + 60 * 60 * 24
 print(
     "Additional stake time1",
-    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(CURRENT_TIME)),
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
 )
-staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 100)
+staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 52)
 print(staking.get_stake("0x3333"))
 assert staking.get_stake("0x3333").reward == 400 + 40
 print("=====================================\n")
 
 print("additional stake after start time with changed reward rate\n")
 staking.set_reward_rate_per_epoch(0.01)
-CURRENT_TIME = _time + 60 * 60 * 24 * 7 * 1
+BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 1
 print(
     "Additional stake time2",
-    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(CURRENT_TIME)),
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
 )
-staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 100)
+staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 52)
 print(staking.get_stake("0x3333"))
 assert staking.get_stake("0x3333").reward == 400 + 40 + 3
 print("=====================================\n")
 
 print("try to withdraw before lock end time\n")
-CURRENT_TIME = _time + 60 * 60 * 24 * 7 * 2
-print("Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(CURRENT_TIME)))
+BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 2
+print(
+    "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
+)
 withdraw_amount = staking.unstake("0x3333")
 print(withdraw_amount)
 assert withdraw_amount == 0
 print("=====================================\n")
 
 print("additional stake after lock end time\n")
-CURRENT_TIME = _time + 60 * 60 * 24 * 7 * 5
+BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 5
 print(
     "Additional stake time3",
-    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(CURRENT_TIME)),
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
 )
-staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 100)
+staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 52)
 print(staking.get_stake("0x3333"))
 assert staking.get_stake("0x3333").reward == 400 + 40 + 3
 print("=====================================\n")
 
 print("try to withdraw after lock end time\n")
-CURRENT_TIME = _time + 60 * 60 * 24 * 7 * 5
-print("Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(CURRENT_TIME)))
+BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 5
+print(
+    "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
+)
 withdraw_amount = staking.unstake("0x3333")
 print(withdraw_amount)
 assert withdraw_amount == (1000 + 100 + 100) + (400 + 40 + 3)
