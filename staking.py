@@ -123,7 +123,7 @@ class Staking:
     def stake(self, address, lock_amount, lock_duration):  # lock_duration in seconds
 
         if self.emergency_pause:
-            print("Error: Emergency pause is active.")
+            print("Error: Emergency pause is active. Please try again later.")
             return
 
         if not self._validate_stake_params(lock_amount, lock_duration):
@@ -166,7 +166,7 @@ class Staking:
     def unstake(self, address):
 
         if self.emergency_pause and not self.emergency_withdraw:
-            print("Error: Emergency pause is active.")
+            print("Error: Emergency pause is active. Please try again later.")
             return 0
 
         # allow all users to withdraw their stakes in case of emergency
