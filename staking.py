@@ -1,7 +1,8 @@
 import time
 from dataclasses import dataclass, field
 
-EPOCH_IN_SECONDS = 60 * 60 * 24 * 7  # 1 week
+DAY_IN_SECONDS = 60 * 60 * 24
+EPOCH_IN_SECONDS = DAY_IN_SECONDS * 7  # 1 week
 MAX_LOCK_DURATION = EPOCH_IN_SECONDS * 52  # ~ 1 year
 MAX_LOCK_AMOUNT = 10**7  # 1% of total supply (or it should be 10 ** 18 * 10 ** 7 ?)
 MAX_REWARD_RATE = 0.1  # 10% per epoch
@@ -79,7 +80,9 @@ class Staking:
     
     # util functions
     def _get_next_epoch_start_time(self, current_time):
-        seconds_from_thursday = current_time % EPOCH_IN_SECONDS
+        days_since_unix_epoch = current_time // DAY_IN_SECONDS
+        day_of_week = days_since_unix_epoch % 7  # 0: Thursday, 1: Friday, ..., 6: Wednesday
+        seconds_from_thursday = day_of_week * DAY_IN_SECONDS + current_time % DAY_IN_SECONDS
         next_epoch_start_time = current_time + EPOCH_IN_SECONDS - seconds_from_thursday
         if next_epoch_start_time <= current_time:
             return 0
