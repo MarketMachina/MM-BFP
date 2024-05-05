@@ -118,7 +118,7 @@ class GovernanceRewarding:
             if current_time - self.governers[address].last_reward_time < EPOCH_IN_SECONDS:
                 print(f"Error: Reward already given to governer with address {address} in this epoch")
                 return
-            self.governers[address].reward += reward
+            self.governers[address].reward = reward
             self.governers[address].last_reward_time = current_time
             print(f"Reward of {reward} given to governer with address {address}")
             
