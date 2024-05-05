@@ -22,32 +22,22 @@ class Staking:
     def __init__(
         self,
         utility_token_addr,
-        governance_token_addr,  # TODO: deprecated, move to governance contract
         reward_rate_per_epoch=0.1,
-        governance_reward_multiplier=1.0,  # TODO: deprecated, move to governance contract
         emergency_pause=False,
         emergency_withdraw=False,
     ):
         self.utility_token_addr = utility_token_addr
-        self.governance_token_addr = (
-            governance_token_addr  # TODO: deprecated, move to governance contract
-        )
         self.reward_rate_per_epoch = reward_rate_per_epoch
-        self.governance_reward_multiplier = governance_reward_multiplier  # TODO: deprecated, move to governance contract
         self.emergency_pause = emergency_pause
         self.emergency_withdraw = emergency_withdraw
 
         self.stakes = {}
 
+    
     # setter functions (onlyOwner functions in solidity)
     def set_utility_token_addr(self, utility_token_addr):
         self.utility_token_addr = utility_token_addr
         print(f"Utility token address set to {utility_token_addr}")
-
-    # TODO: deprecated, move to governance contract
-    def set_governance_token_addr(self, governance_token_addr):
-        self.governance_token_addr = governance_token_addr
-        print(f"Governance token address set to {governance_token_addr}")
 
     def set_reward_rate_per_epoch(self, reward_rate_per_epoch):
         if reward_rate_per_epoch > MAX_REWARD_RATE:
@@ -59,27 +49,20 @@ class Staking:
         self.reward_rate_per_epoch = reward_rate_per_epoch
         print(f"Reward rate per epoch set to {reward_rate_per_epoch}")
 
-    # TODO: deprecated, move to governance contract
-    def set_governance_reward_multiplier(self, governance_reward_multiplier):
-        self.governance_reward_multiplier = governance_reward_multiplier
-        print(f"Governance reward multiplier set to {governance_reward_multiplier}")
-
+    
     # getter functions (view functions in solidity)
     def get_utility_token_addr(self):
         return self.utility_token_addr
 
-    # TODO: deprecated, move to governance contract
-    def get_governance_token_addr(self):
-        return self.governance_token_addr
-
     def get_reward_rate_per_epoch(self):
         return self.reward_rate_per_epoch
 
-    def get_stake(self, user):
-        if user not in self.stakes:  # solidity: stakes[msg.sender].lockAmount == 0
+    def get_stake(self, address):
+        if address not in self.stakes:  # solidity: stakes[msg.sender].lockAmount == 0
             return Stake()
-        return self.stakes[user]
+        return self.stakes[address]
 
+    
     # emergency functions (onlyOwner functions in solidity)
     def set_emergency_pause(self, emergency_pause):  # pause all stake functions
         if self.emergency_pause != emergency_pause:
@@ -93,7 +76,8 @@ class Staking:
             self.emergency_withdraw = emergency_withdraw
             print(f"Emergency withdraw set to: {emergency_withdraw}")
 
-    # utils functions
+    
+    # util functions
     def _get_next_epoch_start_time(self, current_time):
         seconds_from_thursday = current_time % EPOCH_IN_SECONDS
         next_epoch_start_time = current_time + EPOCH_IN_SECONDS - seconds_from_thursday
@@ -101,6 +85,7 @@ class Staking:
             return 0
         return next_epoch_start_time
 
+    
     # validate stake parameters
     def _validate_stake_params(self, lock_amount, lock_duration):
         if lock_amount <= 0:
@@ -119,6 +104,7 @@ class Staking:
             return False
         return True
 
+    
     # main stake functions
     def stake(self, address, lock_amount, lock_duration):  # lock_duration in seconds
 
@@ -212,14 +198,13 @@ _time = 1714670000
 # deploy
 staking = Staking(
     utility_token_addr="0x1111",
-    governance_token_addr="0x2222",  # TODO: deprecated, move to governance contract
     reward_rate_per_epoch=0.1,
 )
 
 print("initial stake\n")
 BLOCK_TIMESTAMP = _time
 print("Stake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)))
-staking.stake("0x3333", 1000, 60 * 60 * 24 * 7 * 4)
+staking.stake("0x3333", 1000, EPOCH_IN_SECONDS * 4)
 user_stake = staking.get_stake("0x3333")
 print(user_stake)
 print(
@@ -242,25 +227,25 @@ print(
     "Additional stake time1",
     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
 )
-staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 52)
+staking.stake("0x3333", 100, EPOCH_IN_SECONDS * 52)
 print(staking.get_stake("0x3333"))
 assert staking.get_stake("0x3333").reward == 400 + 40
 print("=====================================\n")
 
 print("additional stake after start time with changed reward rate\n")
 staking.set_reward_rate_per_epoch(0.01)
-BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 1
+BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 1
 print(
     "Additional stake time2",
     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
 )
-staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 52)
+staking.stake("0x3333", 100, EPOCH_IN_SECONDS * 52)
 print(staking.get_stake("0x3333"))
 assert staking.get_stake("0x3333").reward == 400 + 40 + 3
 print("=====================================\n")
 
 print("try to withdraw before lock end time\n")
-BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 2
+BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 2
 print(
     "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
 )
@@ -270,18 +255,18 @@ assert withdraw_amount == 0
 print("=====================================\n")
 
 print("additional stake after lock end time\n")
-BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 5
+BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 5
 print(
     "Additional stake time3",
     time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
 )
-staking.stake("0x3333", 100, 60 * 60 * 24 * 7 * 52)
+staking.stake("0x3333", 100, EPOCH_IN_SECONDS * 52)
 print(staking.get_stake("0x3333"))
 assert staking.get_stake("0x3333").reward == 400 + 40 + 3
 print("=====================================\n")
 
 print("try to withdraw after lock end time\n")
-BLOCK_TIMESTAMP = _time + 60 * 60 * 24 * 7 * 5
+BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 5
 print(
     "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
 )
