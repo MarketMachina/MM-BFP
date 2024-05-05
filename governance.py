@@ -147,6 +147,11 @@ class GovernanceRewarding:
         self.governers[address].reward = 0.0
         self.governers[address].last_claim_time = current_time
         print(f"Reward of {reward} claimed by governer with address {address}")
+        
+    
+    # TODO: potentially we can combine add_governance_reward and claim_governance_reward
+    # into one public user function so that user will pay gas instead of the contract owner
+    # but it it will need to make manually on a weekly basis, so not to lose the reward (discuss with the team)
             
 
 # Test
