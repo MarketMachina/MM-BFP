@@ -30,13 +30,13 @@ class GovernanceRewarding:
     def __init__(
         self,
         governance_token_addr,
-        utility_token_addr,
-        reputation_token_addr,
+        staking_addr,
+        reputation_addr,
         emergency_pause=False,
     ):
         self.governance_token_addr = governance_token_addr
-        self.utility_token_addr = utility_token_addr
-        self.reputation_token_addr = reputation_token_addr
+        self.staking_addr = staking_addr
+        self.reputation_addr = reputation_addr
         self.emergency_pause = emergency_pause
         self.governers = {}
         
@@ -46,24 +46,24 @@ class GovernanceRewarding:
         self.governance_token_addr = governance_token_addr
         print(f"Governance token address set to {governance_token_addr}")
         
-    def set_utility_token_addr(self, utility_token_addr):
-        self.utility_token_addr = utility_token_addr
-        print(f"Utility token address set to {utility_token_addr}")
+    def set_staking_addr(self, staking_addr):
+        self.staking_addr = staking_addr
+        print(f"Staking address set to {staking_addr}")
         
-    def set_reputation_token_addr(self, reputation_token_addr):
-        self.reputation_token_addr = reputation_token_addr
-        print(f"Reputation token address set to {reputation_token_addr}")
+    def set_reputation_addr(self, reputation_addr):
+        self.reputation_addr = reputation_addr
+        print(f"Reputation token address set to {reputation_addr}")
 
     
     # getter functions (view functions in solidity)
     def get_governance_token_addr(self):
         return self.governance_token_addr
     
-    def get_utility_token_addr(self):
-        return self.utility_token_addr
+    def get_staking_addr(self):
+        return self.staking_addr
     
-    def get_reputation_token_addr(self):
-        return self.reputation_token_addr
+    def get_reputation_addr(self):
+        return self.reputation_addr
     
     def get_governer(self, address):
         if address not in self.governers:
@@ -72,16 +72,16 @@ class GovernanceRewarding:
     
     
     # util functions
-    def _get_utility_token_balance(self, user_addr, utility_token_addr):
+    def _get_staking_balance(self, user_addr, staking_addr):
         try:
-            util_balance = BALANCES[user_addr][utility_token_addr]  # BalanceOf in solidity
-            return max(0.0, util_balance)
+            staking_balance = BALANCES[user_addr][staking_addr]  # getStake() in stake contract
+            return max(0.0, staking_balance)
         except KeyError:
             return 0.0  # return 0 if address not found
     
-    def _get_reputation_token_balance(self, user_addr, reputation_token_addr):
+    def _get_reputation_balance(self, user_addr, reputation_addr):
         try:
-            rep_balance = BALANCES[user_addr][reputation_token_addr]  # BalanceOf in solidity
+            rep_balance = BALANCES[user_addr][reputation_addr]  # BalanceOf in solidity
             return max(0.0, rep_balance)
         except KeyError:
             return 0.0  # return 0 if address not found 
@@ -111,14 +111,14 @@ class GovernanceRewarding:
             )
             print(f"New governer added with address {address}")
         else:
-            util_balance = self._get_utility_token_balance(address, self.utility_token_addr)
-            rep_balance = self._get_reputation_token_balance(address, self.reputation_token_addr)
-            # TODO: think about the reward formula
-            reward = util_balance * (1 + math.log(rep_balance + 1)/100)  # import "abdk-libraries-solidity/ABDKMath64x64.sol"; for log
             if current_time - self.governers[address].last_reward_time < EPOCH_IN_SECONDS:
                 print(f"Error: Reward already given to governer with address {address} in this epoch")
                 return
-            self.governers[address].reward = reward
+            staking_balance = self._get_staking_balance(address, self.staking_addr)
+            reputation_balance = self._get_reputation_balance(address, self.reputation_addr)
+            # TODO: think about the reward formula (# import "abdk-libraries-solidity/ABDKMath64x64.sol"; for log)
+            reward = staking_balance * (1 + math.log(reputation_balance + 1)/100)
+            self.governers[address].reward = reward  # safer, but maybe it will require += reward instead of = reward
             self.governers[address].last_reward_time = current_time
             print(f"Reward of {reward} given to governer with address {address}")
             
@@ -157,8 +157,8 @@ class GovernanceRewarding:
 # Test
 governance = GovernanceRewarding(
     governance_token_addr="0x000",
-    utility_token_addr="0x222",
-    reputation_token_addr="0x333",
+    staking_addr="0x222",
+    reputation_addr="0x333",
     emergency_pause=False
 )
 
