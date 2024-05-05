@@ -119,11 +119,11 @@ class Staking:
             return
 
         current_time = BLOCK_TIMESTAMP  # solidity: block.timestamp
-        next_epoch_start_time = self._get_next_epoch_start_time(current_time)
-        if next_epoch_start_time <= 0:
-            print("Error: Invalid next epoch start time. Please try again.")
-            return
         if address not in self.stakes:  # solidity: stakes[msg.sender].lockAmount == 0
+            next_epoch_start_time = self._get_next_epoch_start_time(current_time)
+            if next_epoch_start_time <= 0:
+                print("Error: Invalid next epoch start time. Please try again.")
+                return
             epoch_num = lock_duration // EPOCH_IN_SECONDS
             _reward = lock_amount * self.reward_rate_per_epoch * epoch_num
             self.stakes[address] = Stake(
@@ -142,14 +142,15 @@ class Staking:
             if remaining_time > self.stakes[address].lock_duration + EPOCH_IN_SECONDS:
                 print("Error: Invalid remaining time. Please try again.")
                 return
-            if remaining_time > EPOCH_IN_SECONDS:
-                remaining_epoch_num = remaining_time // EPOCH_IN_SECONDS
-                _reward = lock_amount * self.reward_rate_per_epoch * remaining_epoch_num
-                self.stakes[address].lock_amount += lock_amount
-                self.stakes[address].reward += _reward
-                print(f"Stake for {address} updated: {self.stakes[address]}")
-            else:
+            if remaining_time <= EPOCH_IN_SECONDS:
                 print("Error: Cannot deposit to stake nearing or past its end.")
+                return
+            remaining_epoch_num = remaining_time // EPOCH_IN_SECONDS
+            _reward = lock_amount * self.reward_rate_per_epoch * remaining_epoch_num
+            self.stakes[address].lock_amount += lock_amount
+            self.stakes[address].reward += _reward
+            print(f"Stake for {address} updated: {self.stakes[address]}")
+                
 
     # address = msg.sender
     def unstake(self, address):
