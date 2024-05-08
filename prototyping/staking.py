@@ -225,6 +225,16 @@ print(
 assert user_stake.reward == 400
 print("=====================================\n")
 
+print("manipulate time to unstake before start time\n")
+BLOCK_TIMESTAMP = _time - EPOCH_IN_SECONDS * 2
+print(
+    "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
+)
+withdraw_amount = staking.unstake("0x3333")
+print(withdraw_amount)
+assert withdraw_amount == 0
+print("=====================================\n")
+
 print("additional stake before start time\n")
 BLOCK_TIMESTAMP = _time + 60 * 60 * 24
 print(
