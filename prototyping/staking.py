@@ -5,7 +5,7 @@ DAY_IN_SECONDS = 60 * 60 * 24
 EPOCH_IN_SECONDS = DAY_IN_SECONDS * 7  # 1 week
 MAX_LOCK_DURATION = EPOCH_IN_SECONDS * 52  # ~ 1 year
 MAX_LOCK_AMOUNT = 10**7  # 1% of total supply (or it should be 10 ** 18 * 10 ** 7 ?)
-MAX_REWARD_RATE = 0.1  # 10% per epoch
+MAX_REWARD_RATE = 10  # 10% per epoch
 MAX_MULTIPLIER_TO_WITHDRAW = 3  # 300% of lock amount
 
 
@@ -23,7 +23,7 @@ class Staking:
     def __init__(
         self,
         utility_token_addr,
-        reward_rate_per_epoch=0.1,
+        reward_rate_per_epoch=10,
         emergency_pause=False,
         emergency_withdraw=False,
     ):
@@ -125,7 +125,7 @@ class Staking:
                 print("Error: Invalid next epoch start time. Please try again.")
                 return
             epoch_num = lock_duration // EPOCH_IN_SECONDS
-            _reward = lock_amount * self.reward_rate_per_epoch * epoch_num
+            _reward = lock_amount * epoch_num * self.reward_rate_per_epoch / 100
             self.stakes[address] = Stake(
                 lock_amount=lock_amount,
                 start_time=next_epoch_start_time,
@@ -146,7 +146,7 @@ class Staking:
                 print("Error: Cannot deposit to stake nearing or past its end.")
                 return
             remaining_epoch_num = remaining_time // EPOCH_IN_SECONDS
-            _reward = lock_amount * self.reward_rate_per_epoch * remaining_epoch_num
+            _reward = lock_amount * remaining_epoch_num * self.reward_rate_per_epoch / 100
             self.stakes[address].lock_amount += lock_amount
             self.stakes[address].reward += _reward
             print(f"Stake for {address} updated: {self.stakes[address]}")
@@ -202,7 +202,7 @@ _time = 1714670000
 # deploy
 staking = Staking(
     utility_token_addr="0x1111",
-    reward_rate_per_epoch=0.1,
+    reward_rate_per_epoch=10,
 )
 
 print("initial stake\n")
@@ -237,7 +237,7 @@ assert staking.get_stake("0x3333").reward == 400 + 40
 print("=====================================\n")
 
 print("additional stake after start time with changed reward rate\n")
-staking.set_reward_rate_per_epoch(0.01)
+staking.set_reward_rate_per_epoch(1)
 BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 1
 print(
     "Additional stake time2",
