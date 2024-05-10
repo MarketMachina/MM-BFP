@@ -25,7 +25,7 @@ contract ProjectStakeContract is Ownable {
         uint256 startTime;
         uint256 lockDuration;
         uint256 reward;
-    }
+    } 
 
     mapping (address => Stake) public Stakers;
 
@@ -75,7 +75,7 @@ contract ProjectStakeContract is Ownable {
         else {
             
             uint256 nextEpoch = get_next_epoch_start_time();
-            if (nextEpoch > 0) {
+            if (nextEpoch < 0) {
                 revert ("Invalid next epoch start time. Please try again.");
             }
             uint256 epoch_num = lock_duration;
@@ -180,6 +180,11 @@ contract ProjectStakeContract is Ownable {
     function Timestamp() external view returns (uint256) {
         uint256 _timestamp = block.timestamp;
         return _timestamp;
+    }
+
+    function stakeAmount(address user) external view returns (uint256) {
+        uint256 amount = Stakers[user].amount;
+        return amount;
     }
     
 
