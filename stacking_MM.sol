@@ -187,6 +187,11 @@ contract ProjectStakeContract is Ownable {
         uint256 amount = Stakers[user].amount;
         return amount;
     }
+
+    function userStakeStart(address user) external view returns (uint256) {
+        uint256 amount = Stakers[user].startTime;
+        return amount;
+    }
     
 
     receive() external payable {

@@ -10,9 +10,10 @@ abstract contract TKNContract {
 }
 abstract contract ProjectStakeContract {
     function stakeAmount (address user) virtual public view returns (uint256);
+    function userStakeStart (address user) virtual public view returns (uint256); 
 } 
 
-contract MM_GovContract is Ownable {
+contract GovContract is Ownable {
 
     uint256 reward;
     uint256 current_time;
@@ -66,6 +67,9 @@ contract MM_GovContract is Ownable {
                 if (current_time - Gov[user].last_reward_time < EPOCH_IN_SECONDS) {
                     revert ("Reward already given to governer in this epoch");
                 }
+                if (current_time < Staking.userStakeStart(user)) {
+                    revert("Current Time < Stake Start Time");
+                }               
                 uint256 staking_balance = _get_staking_balance(user);
                 uint128 reputation_balance = _get_reputation_balance(user);
                 int128 count = (1 + ABDKMath64x64.log_2(int128(reputation_balance) + 1)/100);
@@ -116,8 +120,6 @@ contract MM_GovContract is Ownable {
         if (emergencyStopTrigger == false) { emergencyStopTrigger = true; }
         else { emergencyStopTrigger = false; }
     }
-
-
 
 // ----- View -----
 
