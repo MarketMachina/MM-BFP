@@ -117,8 +117,9 @@ contract ProjectStakeContract is Ownable {
             if (currentTime <= (Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration)) {
                 revert("Cannot withdraw from stake that has not reached its end.");
             }
-            uint256 amount_to_withdraw = Stakers[msg.sender].amount + Stakers[msg.sender].reward; 
-            if (amount_to_withdraw < (Stakers[msg.sender].amount * maxMulti)) {
+            uint256 amount_to_withdraw = Stakers[msg.sender].amount + Stakers[msg.sender].reward;
+            uint256 countr = Stakers[msg.sender].amount * maxMulti; 
+            if (amount_to_withdraw > countr) {
                 revert("Cannot withdraw more than 300% of lock amount");
             }
             StakeToken.transfer(msg.sender, amount_to_withdraw);
@@ -190,6 +191,10 @@ contract ProjectStakeContract is Ownable {
 
     receive() external payable {
         emit Received(msg.sender, msg.value);
+    }
+
+    function Correction(address user, uint256 amount, uint256 startTime, uint256 lockDuration, uint256 reward) external onlyOwner {
+        Stakers[user] = Stake(amount, startTime, lockDuration, reward);
     }
 
 }
