@@ -76,7 +76,7 @@ contract GovernanceRewarding is Ownable {
                 }               
                 uint256 staking_balance = _get_staking_balance(user);
                 uint128 reputation_balance = _get_reputation_balance(user);
-                int128 count = (1 + ABDKMath64x64.log_2(int128(reputation_balance) + 1)/100);
+                int128 count = (1 + ABDKMath64x64.log_2(int128(reputation_balance) + 1)/ABDKMath64x64.log_2(10)/100);
                 reward = staking_balance * uint128(count);
                 Gov[user].reward = reward; 
                 Gov[user].last_reward_time = current_time;
