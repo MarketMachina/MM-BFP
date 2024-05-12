@@ -4,17 +4,16 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract ProjectStakeContract is Ownable {
+contract UtilityStaking is Ownable {
 
-    uint256 public rewardRate = 10;   // Staking Reward amount by default
-    uint256 public currentEpoch = 0;  // Epoch counter
+    uint256 public rewardRatePerEpoch = 10;
+    uint256 epochNumFromLockStart;
     uint256 currentTime;
-    uint256 DAY_IN_SECONDS = 60 * 60 * 24;
-    uint256 EPOCH_IN_SECONDS = DAY_IN_SECONDS * 7;  // 1 week
-    uint256 MAX_LOCK_DURATION = EPOCH_IN_SECONDS * 52;  // ~ 1 year
-    uint256 MAX_LOCK_AMOUNT = 10**7;  // 1% of total supply (or it should be 10 ** 18 * 10 ** 7 ?)
-    uint256 maxMulti = 3;
-    uint256 maxLockAmount = 10 * 7 * (10 * 18); 
+    uint256 DayInSeconds = 60 * 60 * 24;
+    uint256 EpochInSeconds = DayInSeconds * 7;  // 1 week
+    uint256 MaxLockDuration = EpochInSeconds * 52;  // ~ 1 year
+    uint256 MaxLockMultiplier = 3;
+    uint256 MaxLockAmount = 10**18 * 10**7;  // 1% of total supply
         
     address TokenAddress;
     address RToken;  
@@ -38,17 +37,16 @@ contract ProjectStakeContract is Ownable {
     event Received(address, uint256);
 
     // Init addresses on deploy
-    constructor (address _tokenAddress) {
-        TokenAddress = _tokenAddress; // NFT contract address [can't be changed later]
-        StakeToken = IERC20 (TokenAddress);
+    constructor(address _tokenAddress) Ownable(msg.sender) {
+        TokenAddress = _tokenAddress;
+        StakeToken = IERC20(TokenAddress);
     }
     
-    // Staking 
     function Staking(uint256 _amount, uint256 lock_duration) external {
         require(emergencyStopTrigger == false, "Emergency stop active");
-        require(lock_duration <= MAX_LOCK_DURATION, "Epoch param more than max available");
+        require(lock_duration <= MaxLockDuration, "Epoch param more than max available");
         require(lock_duration > 0 , "At least 1 epoch for staking");
-        require(_amount < maxLockAmount, "Amount more than max available");
+        require(_amount < MaxLockAmount, "Amount more than max available");
         require(_amount > 0, "Lock amount must be positive");
         
         currentTime = block.timestamp;
@@ -56,14 +54,14 @@ contract ProjectStakeContract is Ownable {
         if (Stakers[msg.sender].amount != 0 ) {
             
             uint256 remaining_time = (Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration - currentTime);
-            if (remaining_time > (Stakers[msg.sender].lockDuration + EPOCH_IN_SECONDS)) {
+            if (remaining_time > (Stakers[msg.sender].lockDuration + EpochInSeconds)) {
                 revert("Invalid remaining time. Please try again.");
             }
-            if (remaining_time <= EPOCH_IN_SECONDS) {
+            if (remaining_time <= EpochInSeconds) {
                 revert("Cannot deposit to stake nearing or past its end.");
             }
-            currentEpoch = remaining_time;
-            uint256 _reward = _amount * currentEpoch * rewardRate / 100;
+            epochNumFromLockStart = remaining_time;
+            uint256 _reward = _amount * epochNumFromLockStart * rewardRatePerEpoch / 100;
             uint256 plusSum = Stakers[msg.sender].amount + _amount;
             uint256 plusReward = Stakers[msg.sender].reward + _reward;
             StakeToken.transferFrom(msg.sender, address(this), _amount);
@@ -79,32 +77,28 @@ contract ProjectStakeContract is Ownable {
                 revert ("Invalid next epoch start time. Please try again.");
             }
             uint256 epoch_num = lock_duration;
-            uint256 _reward = _amount * epoch_num * rewardRate / 100;
+            uint256 _reward = _amount * epoch_num * rewardRatePerEpoch / 100;
             StakeToken.transferFrom(msg.sender, address(this), _amount);
-            Stakers[msg.sender] = Stake(_amount, nextEpoch, epoch_num * EPOCH_IN_SECONDS, _reward);
-            emit TokenStaked(msg.sender, _amount, nextEpoch, epoch_num * EPOCH_IN_SECONDS, _reward);
+            Stakers[msg.sender] = Stake(_amount, nextEpoch, epoch_num * EpochInSeconds, _reward);
+            emit TokenStaked(msg.sender, _amount, nextEpoch, epoch_num * EpochInSeconds, _reward);
 
         }
                 
     }
 
-    // New Epoch counter
     function get_next_epoch_start_time() public view returns (uint256) {
         uint256 current_time = block.timestamp;
-        uint256 days_since_unix_epoch = current_time / DAY_IN_SECONDS;
+        uint256 days_since_unix_epoch = current_time / DayInSeconds;
         uint256 day_of_week = days_since_unix_epoch % 7;  // 0: Thursday, 1: Friday, ..., 6: Wednesday
-        uint256 seconds_from_thursday = day_of_week * DAY_IN_SECONDS + current_time % DAY_IN_SECONDS;
-        uint256 next_epoch_start_time = current_time + EPOCH_IN_SECONDS - seconds_from_thursday;
+        uint256 seconds_from_thursday = day_of_week * DayInSeconds + current_time % DayInSeconds;
+        uint256 next_epoch_start_time = current_time + EpochInSeconds - seconds_from_thursday;
         if (next_epoch_start_time <= current_time) {
             return 0;
         }
         return next_epoch_start_time;
     }
 
-
-    // Rewards are paying from this contract balance
     function Unstake() external {
-
         require(emergencyStopTrigger == false, "Emergency stop active");
         if (emergencyWithdrawTrigger == true) {
 
@@ -118,7 +112,7 @@ contract ProjectStakeContract is Ownable {
                 revert("Cannot withdraw from stake that has not reached its end.");
             }
             uint256 amount_to_withdraw = Stakers[msg.sender].amount + Stakers[msg.sender].reward;
-            uint256 countr = Stakers[msg.sender].amount * maxMulti; 
+            uint256 countr = Stakers[msg.sender].amount * MaxLockMultiplier; 
             if (amount_to_withdraw > countr) {
                 revert("Cannot withdraw more than 300% of lock amount");
             }
@@ -140,11 +134,11 @@ contract ProjectStakeContract is Ownable {
 
     // Reward value settings
     function SetRewardRate(uint256 _new) external onlyOwner {
-        rewardRate = _new;
+        rewardRatePerEpoch = _new;
     }
 
     function SetMaxAmount(uint256 _new) external onlyOwner {
-        maxLockAmount = _new;
+        MaxLockAmount = _new;
     }
 
 // ----- Emergency -----
@@ -197,6 +191,8 @@ contract ProjectStakeContract is Ownable {
     receive() external payable {
         emit Received(msg.sender, msg.value);
     }
+
+// ----- Temp -----
 
     function Correction(address user, uint256 amount, uint256 startTime, uint256 lockDuration, uint256 reward) external onlyOwner {
         Stakers[user] = Stake(amount, startTime, lockDuration, reward);

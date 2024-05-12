@@ -1,0 +1,17 @@
+{
+  "name": "bfp",
+  "version": "1.0.0",
+  "description": "Blockchain functionality prototyping for MarketMachina project <p> Base Sepolia - ERC20 - Main Token:<br> https://sepolia.basescan.org/address/0x4AAf7635458F2fC9654Ec2514d18778133633622#code <p> Base Sepolia - NonTransfer RepToken:<br> https://sepolia.basescan.org/address/0xd0B448cF41d6b64274B75179503c408b0e9fA045#code <p> Base Sepolia - NonTrasfer GovToken:<br> https://sepolia.basescan.org/address/0xBd52F29181BcBD1d9c76CDc1c7370C9515c69ccA#code <p> Base Sepolis - Staking:<br> https://sepolia.basescan.org/address/0xb8Ced529F95B97a8fe13F8c7F83A3833BB0dA1ad#code <p> Base Sepolia - GovContract: <br> https://sepolia.basescan.org/address/0x1E5c57b192e0BAEeF59fd8d50B6c304ceF590EF5#code",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "@truffle/hdwallet-provider": "^2.1.15",
+    "truffle": "^5.11.5"
+  }
+}

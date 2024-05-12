@@ -2,28 +2,32 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "https://github.com/abdk-consulting/abdk-libraries-solidity/ABDKMath64x64.sol";
+import "./ABDK/ABDKMath64x64.sol";
 
-abstract contract TKNContract {
+abstract contract AbstractReputationToken {
+    function balanceOf(address wallet) virtual public view returns (uint128);
+}
+
+abstract contract AbstractGovernanceToken {
     function mintToWallet(address wallet, uint256 amount) virtual public returns (bool);
     function balanceOf(address wallet) virtual public view returns (uint128);
 }
-abstract contract ProjectStakeContract {
+abstract contract AbstractUtilityStaking {
     function stakeAmount (address user) virtual public view returns (uint256);
     function userStakeStart (address user) virtual public view returns (uint256); 
 } 
 
-contract GovContract is Ownable {
+contract GovernanceRewarding is Ownable {
 
     uint256 reward;
     uint256 current_time;
     uint256 EPOCH_IN_SECONDS = 60 * 60 * 24 * 7;  // 1 week
     address StakingAddr;
-    ProjectStakeContract Staking; 
-    address RepTokenAddress; 
+    AbstractUtilityStaking Staking;
+    address RepTokenAddress;
     address GTokenAddress;
-    TKNContract RepToken;
-    TKNContract GToken;
+    AbstractReputationToken RepToken;
+    AbstractGovernanceToken GToken;
 
     struct Governer {
         uint256 init_time;
@@ -39,13 +43,13 @@ contract GovContract is Ownable {
     event GovernanceTokenClaim (address owner, uint256 amount);
 
     // Init addresses on deploy
-    constructor (address _RepTokenAddr, address _GtokenAddr, address _staking) {
+    constructor(address _RepTokenAddr, address _GtokenAddr, address _staking) Ownable(msg.sender) {
         RepTokenAddress = _RepTokenAddr;
-        RepToken = TKNContract (RepTokenAddress);
+        RepToken = AbstractReputationToken (RepTokenAddress);
         GTokenAddress = _GtokenAddr;
-        GToken = TKNContract (GTokenAddress);
+        GToken = AbstractGovernanceToken (GTokenAddress);
         StakingAddr = _staking;
-        Staking = ProjectStakeContract (StakingAddr);
+        Staking = AbstractUtilityStaking (StakingAddr);
     }
     
     function _get_staking_balance(address user) public view returns (uint256) {
@@ -105,15 +109,15 @@ contract GovContract is Ownable {
 
     // Change reward token address
     function ChangeGovToken(address _new) external onlyOwner {
-        GToken = TKNContract(_new);
+        GToken = AbstractGovernanceToken(_new);
     }
 
     function ChangeRepToken(address _new) external onlyOwner {
-        RepToken = TKNContract(_new);
+        RepToken = AbstractReputationToken(_new);
     }
 
     function ChangeStaking(address _new) external onlyOwner {
-        Staking = ProjectStakeContract(_new);
+        Staking = AbstractUtilityStaking(_new);
     }
 
     function emergencyStop() external onlyOwner {
