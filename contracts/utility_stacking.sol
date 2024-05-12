@@ -60,7 +60,7 @@ contract UtilityStaking is Ownable {
             if (remaining_time <= EpochInSeconds) {
                 revert("Cannot deposit to stake nearing or past its end.");
             }
-            epochNumFromLockStart = remaining_time;
+            epochNumFromLockStart = remaining_time / EpochInSeconds;
             uint256 _reward = _amount * epochNumFromLockStart * rewardRatePerEpoch / 100;
             uint256 plusSum = Stakers[msg.sender].amount + _amount;
             uint256 plusReward = Stakers[msg.sender].reward + _reward;
@@ -76,7 +76,7 @@ contract UtilityStaking is Ownable {
             if (nextEpoch < 0) {
                 revert ("Invalid next epoch start time. Please try again.");
             }
-            uint256 epoch_num = lock_duration;
+            uint256 epoch_num = lock_duration / EpochInSeconds;
             uint256 _reward = _amount * epoch_num * rewardRatePerEpoch / 100;
             StakeToken.transferFrom(msg.sender, address(this), _amount);
             Stakers[msg.sender] = Stake(_amount, nextEpoch, epoch_num * EpochInSeconds, _reward);
