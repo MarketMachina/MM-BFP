@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-interface IERC20 {
+interface IGovernanceTokenERC20 {
 
     event Approval(address indexed account, address indexed spender, uint256 value);
     event Burn(address indexed account, uint256 value);
@@ -15,11 +15,11 @@ interface IERC20 {
     
 }
 
-contract TKNContract is IERC20, AccessControl {
+contract GovernanceToken is IGovernanceTokenERC20, AccessControl {
 
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
-    address public owner;
+    address public owner;  // TODO: remove this variable
 
     mapping (address => uint256) private _balances;
     mapping (address => mapping (address => uint256)) private _allowances;
@@ -31,10 +31,10 @@ contract TKNContract is IERC20, AccessControl {
     string private _name;
 
     constructor() {
-        _name = "Token";
-        _symbol = "NTT20";
+        _name = "Market Machina Governance";
+        _symbol = "veMACHINA";
         _decimals = 18;
-        _maxTokens = 100000000 * (uint256(10) ** _decimals);
+        _maxTokens = (uint256(10) ** 7) * (uint256(10) ** _decimals);
         increaseAllowance(msg.sender, _maxTokens);
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
