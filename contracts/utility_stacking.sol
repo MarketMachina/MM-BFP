@@ -73,7 +73,7 @@ contract UtilityStaking is Ownable {
         else {
             
             uint256 nextEpoch = get_next_epoch_start_time();
-            if (nextEpoch < 0) {
+            if (nextEpoch <= 0) {
                 revert ("Invalid next epoch start time. Please try again.");
             }
             uint256 epoch_num = lock_duration / EpochInSeconds;
