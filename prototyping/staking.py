@@ -9,6 +9,23 @@ MAX_REWARD_RATE = 10  # 10% per epoch
 MAX_MULTIPLIER_TO_WITHDRAW = 3  # 300% of lock amount
 
 
+class BlockTimestamp:
+    """
+    This class is implemented for python testing purposes only
+    In actual implementation, use block.timestamp directly
+    For solidity testing use evm_increaseTime and evm_mine
+    """
+    def __init__(self, initial_timestamp=0):
+        self._timestamp = initial_timestamp
+
+    @property
+    def timestamp(self):
+        return self._timestamp
+
+    def set_timestamp(self, new_timestamp):
+        self._timestamp = new_timestamp
+
+
 @dataclass
 class Stake:
     lock_amount: int = field(default=0)
@@ -26,13 +43,15 @@ class Staking:
         reward_rate_per_epoch=10,
         emergency_pause=False,
         emergency_withdraw=False,
+        
+        block_timestamp=None,  # for testing purposes only (not needed in actual implementation)
     ):
         self.utility_token_addr = utility_token_addr
         self.reward_rate_per_epoch = reward_rate_per_epoch
         self.emergency_pause = emergency_pause
         self.emergency_withdraw = emergency_withdraw
-
-        self.stakes = {}
+        self.stakes = {}        
+        self.block_timestamp = block_timestamp or BlockTimestamp(int(time.time()))  # for testing purposes only (not needed in actual implementation)
 
     
     # setter functions (onlyOwner functions in solidity)
@@ -118,7 +137,7 @@ class Staking:
         if not self._validate_stake_params(lock_amount, lock_duration):
             return
 
-        current_time = BLOCK_TIMESTAMP  # solidity: block.timestamp
+        current_time = self.block_timestamp.timestamp  # solidity: block.timestamp
         if address not in self.stakes:  # solidity: stakes[msg.sender].lockAmount == 0
             next_epoch_start_time = self._get_next_epoch_start_time(current_time)
             if next_epoch_start_time <= 0:
@@ -172,7 +191,7 @@ class Staking:
             print(f"Error: No stake found for address {address}.")
             return 0
 
-        current_time = BLOCK_TIMESTAMP  # solidity: block.timestamp
+        current_time = self.block_timestamp.timestamp  # solidity: block.timestamp
         if (
             current_time
             <= self.stakes[address].start_time + self.stakes[address].lock_duration
@@ -198,16 +217,21 @@ class Staking:
 
 # Tests
 _time = 1714670000
+block_timestamp = BlockTimestamp(_time)
 
 # deploy
 staking = Staking(
     utility_token_addr="0x1111",
     reward_rate_per_epoch=10,
+    block_timestamp=block_timestamp,
 )
 
 print("initial stake\n")
-BLOCK_TIMESTAMP = _time
-print("Stake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)))
+block_timestamp.set_timestamp(_time)
+print(
+    "Stake time",
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block_timestamp.timestamp))
+)
 staking.stake("0x3333", 1000, EPOCH_IN_SECONDS * 4)
 user_stake = staking.get_stake("0x3333")
 print(user_stake)
@@ -226,9 +250,10 @@ assert user_stake.reward == 400
 print("=====================================\n")
 
 print("manipulate time to unstake before start time\n")
-BLOCK_TIMESTAMP = _time - EPOCH_IN_SECONDS * 2
+block_timestamp.set_timestamp(_time - EPOCH_IN_SECONDS * 2)
 print(
-    "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
+    "Unstake time",
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block_timestamp.timestamp))
 )
 withdraw_amount = staking.unstake("0x3333")
 print(withdraw_amount)
@@ -236,10 +261,10 @@ assert withdraw_amount == 0
 print("=====================================\n")
 
 print("additional stake before start time\n")
-BLOCK_TIMESTAMP = _time + 60 * 60 * 24
+block_timestamp.set_timestamp(_time + 60 * 60 * 24)
 print(
     "Additional stake time1",
-    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block_timestamp.timestamp))
 )
 staking.stake("0x3333", 100, EPOCH_IN_SECONDS * 52)
 print(staking.get_stake("0x3333"))
@@ -248,10 +273,10 @@ print("=====================================\n")
 
 print("additional stake after start time with changed reward rate\n")
 staking.set_reward_rate_per_epoch(1)
-BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 1
+block_timestamp.set_timestamp(_time + EPOCH_IN_SECONDS * 1)
 print(
     "Additional stake time2",
-    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block_timestamp.timestamp))
 )
 staking.stake("0x3333", 100, EPOCH_IN_SECONDS * 52)
 print(staking.get_stake("0x3333"))
@@ -259,9 +284,10 @@ assert staking.get_stake("0x3333").reward == 400 + 40 + 3
 print("=====================================\n")
 
 print("try to withdraw before lock end time\n")
-BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 2
+block_timestamp.set_timestamp(_time + EPOCH_IN_SECONDS * 2)
 print(
-    "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
+    "Unstake time",
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block_timestamp.timestamp))
 )
 withdraw_amount = staking.unstake("0x3333")
 print(withdraw_amount)
@@ -269,10 +295,10 @@ assert withdraw_amount == 0
 print("=====================================\n")
 
 print("additional stake after lock end time\n")
-BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 5
+block_timestamp.set_timestamp( _time + EPOCH_IN_SECONDS * 5)
 print(
     "Additional stake time3",
-    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP)),
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block_timestamp.timestamp))
 )
 staking.stake("0x3333", 100, EPOCH_IN_SECONDS * 52)
 print(staking.get_stake("0x3333"))
@@ -280,9 +306,10 @@ assert staking.get_stake("0x3333").reward == 400 + 40 + 3
 print("=====================================\n")
 
 print("try to withdraw after lock end time\n")
-BLOCK_TIMESTAMP = _time + EPOCH_IN_SECONDS * 5
+block_timestamp.set_timestamp(_time + EPOCH_IN_SECONDS * 5)
 print(
-    "Unstake time", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(BLOCK_TIMESTAMP))
+    "Unstake time",
+    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block_timestamp.timestamp))
 )
 withdraw_amount = staking.unstake("0x3333")
 print(withdraw_amount)
