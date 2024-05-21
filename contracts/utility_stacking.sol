@@ -7,13 +7,14 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract UtilityStaking is Ownable {
 
     uint256 public rewardRatePerEpoch = 10;
-    uint256 epochNumFromLockStart;
     uint256 currentTime;
     uint256 DayInSeconds = 60 * 60 * 24;
     uint256 EpochInSeconds = DayInSeconds * 7;  // 1 week
     uint256 MaxLockDuration = EpochInSeconds * 52;  // ~ 1 year
-    uint256 MaxLockMultiplier = 3;
+    // TODO: calculate max lock amount based dynamically based on total supply
     uint256 MaxLockAmount = 10**18 * 10**7;  // 1% of total supply
+    uint256 MaxRewardRate = 10;  // 10% per epoch
+    uint256 MaxLockMultiplierToWithdraw = 3;  // 300% of lock amount
         
     address TokenAddress;
     address RewardToken;  
@@ -53,26 +54,31 @@ contract UtilityStaking is Ownable {
         
         currentTime = block.timestamp;
 
-        if (Stakers[msg.sender].amount != 0 ) {
+        if (Stakers[msg.sender].amount != 0 ) {  // If user already has a stake
             
-            uint256 remaining_time = (Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration - currentTime);
-            if (remaining_time > (Stakers[msg.sender].lockDuration + EpochInSeconds)) {
+            uint256 remainingTime = (Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration - currentTime);
+            if (remainingTime > (Stakers[msg.sender].lockDuration + EpochInSeconds)) {
                 revert("Invalid remaining time. Please try again.");
             }
-            if (remaining_time <= EpochInSeconds) {
+            if (remainingTime <= EpochInSeconds) {
                 revert("Cannot deposit to stake nearing or past its end.");
             }
-            epochNumFromLockStart = remaining_time / EpochInSeconds;
-            uint256 _reward = _amount * epochNumFromLockStart * rewardRatePerEpoch / 100;
-            uint256 plusSum = Stakers[msg.sender].amount + _amount;
-            uint256 plusReward = Stakers[msg.sender].reward + _reward;
+            uint256 remainingEpochNum = remainingTime / EpochInSeconds;
+            uint256 _reward = _amount * remainingEpochNum * rewardRatePerEpoch / 100;
+            uint256 totalAmount = Stakers[msg.sender].amount + _amount;
+            uint256 totalReward = Stakers[msg.sender].reward + _reward;
             StakeToken.transferFrom(msg.sender, address(this), _amount);
-            Stakers[msg.sender] = Stake(plusSum, Stakers[msg.sender].startTime, lock_duration, plusReward);
-            emit TokenUpdated(msg.sender, _amount, _reward);
+            Stakers[msg.sender] = Stake(
+                totalAmount,
+                Stakers[msg.sender].startTime,
+                Stakers[msg.sender].lockDuration,
+                totalReward
+            );
+            emit TokenUpdated(msg.sender, totalAmount, totalReward);
 
         }
 
-        else {
+        else {  // If user has no stake
             
             uint256 nextEpoch = get_next_epoch_start_time();
             if (nextEpoch <= 0) {
@@ -103,7 +109,6 @@ contract UtilityStaking is Ownable {
     function Unstake() external {
         require(emergencyStopTrigger == false, "Emergency stop active");
         if (emergencyWithdrawTrigger == true) {
-
             StakeToken.transfer(msg.sender, Stakers[msg.sender].amount);
             emit TokenUnstaked(msg.sender, Stakers[msg.sender].amount, 0);
             delete Stakers[msg.sender];
@@ -113,17 +118,17 @@ contract UtilityStaking is Ownable {
             if (currentTime <= (Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration)) {
                 revert("Cannot withdraw from stake that has not reached its end.");
             }
-            uint256 amount_to_withdraw = Stakers[msg.sender].amount + Stakers[msg.sender].reward;
-            uint256 countr = Stakers[msg.sender].amount * MaxLockMultiplier; 
-            if (amount_to_withdraw > countr) {
+            uint256 amountToWithdraw = Stakers[msg.sender].amount + Stakers[msg.sender].reward;
+            uint256 maxWithdraw = Stakers[msg.sender].amount * MaxLockMultiplierToWithdraw; 
+            if (amountToWithdraw > maxWithdraw) {
                 revert("Cannot withdraw more than 300% of lock amount");
             }
-            StakeToken.transfer(msg.sender, amount_to_withdraw);
+            // TODO: Should we transfer stake token and reward token separately?
+            StakeToken.transfer(msg.sender, amountToWithdraw);
             
             emit TokenUnstaked(msg.sender, Stakers[msg.sender].amount, Stakers[msg.sender].reward);
             delete Stakers[msg.sender];
         }
-        
     }
 
   
@@ -136,6 +141,7 @@ contract UtilityStaking is Ownable {
 
     // Reward value settings
     function SetRewardRate(uint256 _new) external onlyOwner {
+        require(_new <= MaxRewardRate, "Reward rate more than max available");
         rewardRatePerEpoch = _new;
     }
 
