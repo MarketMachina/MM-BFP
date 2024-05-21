@@ -76,10 +76,10 @@ contract GovernanceRewarding is Ownable {
                 }               
                 uint256 staking_balance = _get_staking_balance(user);
                 uint128 reputation_balance = _get_reputation_balance(user);
-                int128 count = (1 + ABDKMath64x64.log_2(int128(reputation_balance) + 1)/100);
+                int128 count = (1 + ABDKMath64x64.log_2(int128(reputation_balance) + 1)/ABDKMath64x64.log_2(10)/100);
                 reward = staking_balance * uint128(count);
-                Gov[user].reward = reward; 
-                Gov[user].last_reward_time = current_time;
+                Gov[user] = Governer(current_time, reward, current_time, 0);
+				
                 emit RewardAdded(user, reward);
         }
 
@@ -101,6 +101,7 @@ contract GovernanceRewarding is Ownable {
         Gov[msg.sender].reward = 0;
         Gov[msg.sender].last_claim_time = current_time;
         GToken.mintToWallet(msg.sender, reward);
+		
         emit GovernanceTokenClaim(msg.sender, reward);
 
     }
@@ -134,5 +135,23 @@ contract GovernanceRewarding is Ownable {
     function RepTokenData() external view returns (address) {
         return RepTokenAddress;
     }
+	
+// ---- test ----
+    function rewardAmount(address user) external {
+        uint256 staking_balance = _get_staking_balance(user);
+        uint128 reputation_balance = _get_reputation_balance(user);
+        int128 count = (1 + ABDKMath64x64.log_2(int128(reputation_balance) + 1)/ABDKMath64x64.log_2(10)/100);
+        reward = staking_balance * uint128(count);
+        Gov[user].reward = reward;
+    }
+
+    function userLastRewTime(address user, uint256 time) external {
+        Gov[user].last_reward_time = time;
+    }
+
+    function userLastClaimTime(address user, uint256 time) external {
+        Gov[user].last_claim_time = time;
+    }
+// --------------
 
 }
