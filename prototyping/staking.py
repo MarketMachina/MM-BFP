@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 DAY_IN_SECONDS = 60 * 60 * 24
 EPOCH_IN_SECONDS = DAY_IN_SECONDS * 7  # 1 week
 MAX_LOCK_DURATION = EPOCH_IN_SECONDS * 52  # ~ 1 year
-MAX_LOCK_AMOUNT = 10**7  # 1% of total supply (or it should be 10 ** 18 * 10 ** 7 ?)
+MAX_LOCK_AMOUNT = 10**18 * 10**7;  # 1% of total supply
 MAX_REWARD_RATE = 10  # 10% per epoch
 MAX_MULTIPLIER_TO_WITHDRAW = 3  # 300% of lock amount
 
@@ -12,8 +12,6 @@ MAX_MULTIPLIER_TO_WITHDRAW = 3  # 300% of lock amount
 class BlockTimestamp:
     """
     This class is implemented for python testing purposes only
-    In actual implementation, use block.timestamp directly
-    For solidity testing use evm_increaseTime and evm_mine
     """
     def __init__(self, initial_timestamp=0):
         self._timestamp = initial_timestamp
