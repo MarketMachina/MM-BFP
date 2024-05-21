@@ -16,7 +16,7 @@ contract UtilityStaking is Ownable {
     uint256 MaxLockAmount = 10**18 * 10**7;  // 1% of total supply
         
     address TokenAddress;
-    address RToken;  
+    address RewardToken;  
     IERC20 StakeToken;
 
     struct Stake {
@@ -48,6 +48,8 @@ contract UtilityStaking is Ownable {
         require(lock_duration > 0 , "At least 1 epoch for staking");
         require(_amount < MaxLockAmount, "Amount more than max available");
         require(_amount > 0, "Lock amount must be positive");
+
+        // TODO: Add check for user allowance and balance before executing
         
         currentTime = block.timestamp;
 
@@ -129,7 +131,7 @@ contract UtilityStaking is Ownable {
 
     // Change reward token address
     function ChangeToken(address _new) external onlyOwner {
-        RToken = _new;
+        RewardToken = _new;
     }
 
     // Reward value settings
@@ -155,21 +157,21 @@ contract UtilityStaking is Ownable {
 
     // Emergency funds withdrawal 
     function emergency() external onlyOwner {
-        IERC20 _RToken = IERC20(RToken);
-        _RToken.transfer(owner(), _RToken.balanceOf(address(this)));
+        IERC20 _RewardToken = IERC20(RewardToken);
+        _RewardToken.transfer(owner(), _RewardToken.balanceOf(address(this)));
         payable(owner()).transfer(address(this).balance);
     }
 
 // ----- View -----
 
     function RewardTokenData() external view returns (address) {
-        return RToken;
+        return RewardToken;
     }
    
     // View sum of total reward tokens on this contract balance
     function RewardBalance() external view returns (uint256) {
-        IERC20 _RToken = IERC20(RToken);
-        return _RToken.balanceOf(address(this));
+        IERC20 _RewardToken = IERC20(RewardToken);
+        return _RewardToken.balanceOf(address(this));
     }
 
     function Timestamp() external view returns (uint256) {
