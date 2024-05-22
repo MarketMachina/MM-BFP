@@ -45,12 +45,13 @@ contract UtilityStaking is Ownable {
     
     function Staking(uint256 _amount, uint256 lock_duration) external {
         require(emergencyStopTrigger == false, "Emergency stop active");
-        require(lock_duration <= MaxLockDuration, "Epoch param more than max available");
+        require(lock_duration <= MaxLockDuration, "Lock duration more than max available");
         require(lock_duration > 0 , "At least 1 epoch for staking");
         require(_amount < MaxLockAmount, "Amount more than max available");
         require(_amount > 0, "Lock amount must be positive");
 
-        // TODO: Add check for user allowance and balance before executing
+        require(StakeToken.allowance(msg.sender, address(this)) >= _amount, "Token allowance too low");
+        require(StakeToken.balanceOf(msg.sender) >= _amount, "Insufficient balance");
         
         currentTime = block.timestamp;
 
@@ -96,10 +97,8 @@ contract UtilityStaking is Ownable {
 
     function get_next_epoch_start_time() public view returns (uint256) {
         uint256 current_time = block.timestamp;
-        uint256 days_since_unix_epoch = current_time / DayInSeconds;
-        uint256 day_of_week = days_since_unix_epoch % 7;  // 0: Thursday, 1: Friday, ..., 6: Wednesday
-        uint256 seconds_from_thursday = day_of_week * DayInSeconds + current_time % DayInSeconds;
-        uint256 next_epoch_start_time = current_time + EpochInSeconds - seconds_from_thursday;
+        uint256 seconds_since_epoch = current_time % EpochInSeconds;
+        uint256 next_epoch_start_time = current_time + EpochInSeconds - seconds_since_epoch;
         if (next_epoch_start_time <= current_time) {
             return 0;
         }
@@ -108,27 +107,31 @@ contract UtilityStaking is Ownable {
 
     function Unstake() external {
         require(emergencyStopTrigger == false, "Emergency stop active");
-        if (emergencyWithdrawTrigger == true) {
+        require(Stakers[msg.sender].amount > 0, "No stake found");
+
+        if (emergencyWithdrawTrigger) {
             StakeToken.transfer(msg.sender, Stakers[msg.sender].amount);
             emit TokenUnstaked(msg.sender, Stakers[msg.sender].amount, 0);
-            delete Stakers[msg.sender];
-        }
-        else {
+        } else {
             currentTime = block.timestamp;
-            if (currentTime <= (Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration)) {
-                revert("Cannot withdraw from stake that has not reached its end.");
-            }
-            uint256 amountToWithdraw = Stakers[msg.sender].amount + Stakers[msg.sender].reward;
+            require(
+                currentTime > Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration,
+                "Cannot withdraw from stake that has not reached its end."
+            );
+            uint256 amountToWithdraw = Stakers[msg.sender].amount;
+            uint256 rewardToWithdraw = Stakers[msg.sender].reward;
+            uint256 totalWithdraw = amountToWithdraw + rewardToWithdraw;
             uint256 maxWithdraw = Stakers[msg.sender].amount * MaxLockMultiplierToWithdraw; 
-            if (amountToWithdraw > maxWithdraw) {
-                revert("Cannot withdraw more than 300% of lock amount");
-            }
+            require(
+                totalWithdraw <= maxWithdraw,
+                "Cannot withdraw more than 300% of lock amount"
+            );
             // TODO: Should we transfer stake token and reward token separately?
             StakeToken.transfer(msg.sender, amountToWithdraw);
-            
+            IERC20(RewardToken).transfer(msg.sender, rewardToWithdraw);   
             emit TokenUnstaked(msg.sender, Stakers[msg.sender].amount, Stakers[msg.sender].reward);
-            delete Stakers[msg.sender];
         }
+        delete Stakers[msg.sender];
     }
 
   
@@ -139,26 +142,27 @@ contract UtilityStaking is Ownable {
         RewardToken = _new;
     }
 
-    // Reward value settings
-    function SetRewardRate(uint256 _new) external onlyOwner {
-        require(_new <= MaxRewardRate, "Reward rate more than max available");
-        rewardRatePerEpoch = _new;
+    // Max lock amount settings
+    function SetMaxAmount(uint256 _new) external onlyOwner {
+        require(_new > 0, "Max amount must be positive");
+        MaxLockAmount = _new;
     }
 
-    function SetMaxAmount(uint256 _new) external onlyOwner {
-        MaxLockAmount = _new;
+    // Reward rate per epoch settings
+    function SetRewardRate(uint256 _new) external onlyOwner {
+        require(_new >= 0, "Reward rate must be non-negative");
+        require(_new <= MaxRewardRate, "Reward rate more than max available");
+        rewardRatePerEpoch = _new;
     }
 
 // ----- Emergency -----
 
     function emergencyStop() external onlyOwner {
-        if (emergencyStopTrigger == false) { emergencyStopTrigger = true; }
-        else { emergencyStopTrigger = false; }
+        emergencyStopTrigger = !emergencyStopTrigger;
     }
 
     function emergencyWithdraw() external onlyOwner {
-        if (emergencyWithdrawTrigger == false) { emergencyWithdrawTrigger = true; }
-        else { emergencyWithdrawTrigger = false; }
+        emergencyWithdrawTrigger = !emergencyWithdrawTrigger;
     }
 
     // Emergency funds withdrawal 

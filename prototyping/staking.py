@@ -98,14 +98,8 @@ class Staking:
         if current_time <= 0:
             print("Error: Invalid current time.")
             return 0
-        days_since_unix_epoch = current_time // DAY_IN_SECONDS
-        day_of_week = (
-            days_since_unix_epoch % 7
-        )  # 0: Thursday, 1: Friday, ..., 6: Wednesday
-        seconds_from_thursday = (
-            day_of_week * DAY_IN_SECONDS + current_time % DAY_IN_SECONDS
-        )
-        next_epoch_start_time = current_time + EPOCH_IN_SECONDS - seconds_from_thursday
+        seconds_since_epoch = current_time % EPOCH_IN_SECONDS  # unix epoch starts on a Thursday 00:00:00 UTC
+        next_epoch_start_time = current_time + EPOCH_IN_SECONDS - seconds_since_epoch
         if next_epoch_start_time <= current_time:
             return 0
         return next_epoch_start_time
