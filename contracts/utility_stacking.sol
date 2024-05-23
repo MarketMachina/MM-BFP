@@ -6,15 +6,15 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract UtilityStaking is Ownable {
 
-    uint256 public rewardRatePerEpoch = 10;
-    uint256 currentTime;
-    uint256 DayInSeconds = 60 * 60 * 24;
-    uint256 EpochInSeconds = DayInSeconds * 7;  // 1 week
-    uint256 MaxLockDuration = EpochInSeconds * 52;  // ~ 1 year
-    // TODO: calculate max lock amount based dynamically based on total supply
+    uint256 constant DayInSeconds = 86400;
+    uint256 constant EpochInSeconds = DayInSeconds * 7;  // 1 week
+    uint256 constant MaxLockDuration = EpochInSeconds * 52;  // ~ 1 year
+    uint256 constant MaxRewardRate = 10;  // 10% per epoch
+    uint256 constant MaxLockMultiplierToWithdraw = 3;  // 300% of lock amount
+
+    // TODO: calculate max lock amount dynamically based on total supply
     uint256 MaxLockAmount = 10**18 * 10**7;  // 1% of total supply
-    uint256 MaxRewardRate = 10;  // 10% per epoch
-    uint256 MaxLockMultiplierToWithdraw = 3;  // 300% of lock amount
+    uint256 public rewardRatePerEpoch = 10;
         
     address TokenAddress;
     address RewardToken;  
@@ -32,9 +32,9 @@ contract UtilityStaking is Ownable {
     bool public emergencyStopTrigger = false;
     bool public emergencyWithdrawTrigger = false;
 
-    event TokenUpdated(address owner, uint256 amount, uint256 epoch);
-    event TokenStaked(address owner, uint amount, uint nextEpoch, uint epoch_num, uint reward);
-    event TokenUnstaked(address owner, uint256 amount, uint256 RewardValue);
+    event StakeInitiated(address owner, uint amount, uint nextEpoch, uint epochNum, uint reward);
+    event StakeUpdated(address owner, uint256 amount, uint256 epoch);
+    event StakeWithdrawn(address owner, uint256 amount, uint256 RewardValue);
     event Received(address, uint256);
 
     // Init addresses on deploy
@@ -42,95 +42,114 @@ contract UtilityStaking is Ownable {
         TokenAddress = _tokenAddress;
         StakeToken = IERC20(TokenAddress);
     }
-    
-    function Staking(uint256 _amount, uint256 lock_duration) external {
+
+    function stake(uint256 _amount, uint256 _lockDuration) external {
         require(emergencyStopTrigger == false, "Emergency stop active");
-        require(lock_duration <= MaxLockDuration, "Lock duration more than max available");
-        require(lock_duration > 0 , "At least 1 epoch for staking");
-        require(_amount < MaxLockAmount, "Amount more than max available");
-        require(_amount > 0, "Lock amount must be positive");
-
-        require(StakeToken.allowance(msg.sender, address(this)) >= _amount, "Token allowance too low");
+        require(_lockDuration <= MaxLockDuration && _lockDuration > 0, "Invalid lock duration");
+        require(_amount <= MaxLockAmount && _amount > 0, "Invalid stake amount");
+        require(StakeToken.allowance(msg.sender, address(this)) >= _amount, "Insufficient allowance");
         require(StakeToken.balanceOf(msg.sender) >= _amount, "Insufficient balance");
-        
-        currentTime = block.timestamp;
 
-        if (Stakers[msg.sender].amount != 0 ) {  // If user already has a stake
-            
-            uint256 remainingTime = (Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration - currentTime);
-            if (remainingTime > (Stakers[msg.sender].lockDuration + EpochInSeconds)) {
-                revert("Invalid remaining time. Please try again.");
-            }
-            if (remainingTime <= EpochInSeconds) {
-                revert("Cannot deposit to stake nearing or past its end.");
-            }
-            uint256 remainingEpochNum = remainingTime / EpochInSeconds;
-            uint256 _reward = _amount * remainingEpochNum * rewardRatePerEpoch / 100;
-            uint256 totalAmount = Stakers[msg.sender].amount + _amount;
-            uint256 totalReward = Stakers[msg.sender].reward + _reward;
-            StakeToken.transferFrom(msg.sender, address(this), _amount);
-            Stakers[msg.sender] = Stake(
-                totalAmount,
-                Stakers[msg.sender].startTime,
-                Stakers[msg.sender].lockDuration,
-                totalReward
-            );
-            emit TokenUpdated(msg.sender, totalAmount, totalReward);
-
+        if (Stakers[msg.sender].amount == 0) {  // Create new stake
+            _createNewStake(_amount, _lockDuration);
+        } else {  // Update existing stake
+            _updateStake(_amount);
         }
-
-        else {  // If user has no stake
-            
-            uint256 nextEpoch = get_next_epoch_start_time();
-            if (nextEpoch <= 0) {
-                revert ("Invalid next epoch start time. Please try again.");
-            }
-            uint256 epoch_num = lock_duration / EpochInSeconds;
-            uint256 _reward = _amount * epoch_num * rewardRatePerEpoch / 100;
-            StakeToken.transferFrom(msg.sender, address(this), _amount);
-            Stakers[msg.sender] = Stake(_amount, nextEpoch, epoch_num * EpochInSeconds, _reward);
-            emit TokenStaked(msg.sender, _amount, nextEpoch, epoch_num * EpochInSeconds, _reward);
-
-        }
-                
     }
 
-    function get_next_epoch_start_time() public view returns (uint256) {
-        uint256 current_time = block.timestamp;
-        uint256 seconds_since_epoch = current_time % EpochInSeconds;
-        uint256 next_epoch_start_time = current_time + EpochInSeconds - seconds_since_epoch;
-        if (next_epoch_start_time <= current_time) {
+    function _createNewStake(uint256 _amount, uint256 _lockDuration) internal {
+        uint256 nextEpoch = getNextEpochStartTime();
+        require(nextEpoch > 0, "Invalid next epoch start time");
+
+        uint256 epochNum = _lockDuration / EpochInSeconds;
+        uint256 _reward = _amount * epochNum * rewardRatePerEpoch / 100;
+
+        StakeToken.transferFrom(msg.sender, address(this), _amount);
+
+        Stakers[msg.sender] = Stake(
+            _amount,
+            nextEpoch,
+            epochNum * EpochInSeconds,
+            _reward
+        );
+
+        emit StakeInitiated(msg.sender, _amount, nextEpoch, epochNum * EpochInSeconds, _reward);
+    }
+
+    function _updateStake(uint256 _amount) internal {
+        uint256 remainingTime = Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration - block.timestamp;
+        require(
+            (
+                (remainingTime <= Stakers[msg.sender].lockDuration + EpochInSeconds) && 
+                (remainingTime > EpochInSeconds)
+            ),
+            "Invalid remaining time or stake is near end."
+        );
+
+        uint256 remainingEpochNum = remainingTime / EpochInSeconds;
+        uint256 _reward = _amount * remainingEpochNum * rewardRatePerEpoch / 100;
+        uint256 totalAmount = Stakers[msg.sender].amount + _amount;
+        uint256 totalReward = Stakers[msg.sender].reward + _reward;
+
+        StakeToken.transferFrom(msg.sender, address(this), _amount);
+
+        Stakers[msg.sender] = Stake(
+            totalAmount,
+            Stakers[msg.sender].startTime,
+            Stakers[msg.sender].lockDuration,
+            totalReward
+        );
+
+        emit StakeUpdated(msg.sender, totalAmount, totalReward);
+    }
+
+    function getNextEpochStartTime() public view returns (uint256) {
+        uint256 currentTime = block.timestamp;
+        uint256 secondsSinceEpoch = currentTime % EpochInSeconds;
+        uint256 nextEpochStartTime = currentTime + EpochInSeconds - secondsSinceEpoch;
+        if (nextEpochStartTime <= currentTime) {
             return 0;
         }
-        return next_epoch_start_time;
+        return nextEpochStartTime;
     }
 
-    function Unstake() external {
-        require(emergencyStopTrigger == false, "Emergency stop active");
+    function unstake() external {
+        require(
+            emergencyStopTrigger == false || emergencyWithdrawTrigger == true,
+            "Emergency stop active"
+        );
         require(Stakers[msg.sender].amount > 0, "No stake found");
 
         if (emergencyWithdrawTrigger) {
-            StakeToken.transfer(msg.sender, Stakers[msg.sender].amount);
-            emit TokenUnstaked(msg.sender, Stakers[msg.sender].amount, 0);
+            _emergencyWithdraw();
         } else {
-            currentTime = block.timestamp;
-            require(
-                currentTime > Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration,
-                "Cannot withdraw from stake that has not reached its end."
-            );
-            uint256 amountToWithdraw = Stakers[msg.sender].amount;
-            uint256 rewardToWithdraw = Stakers[msg.sender].reward;
-            uint256 totalWithdraw = amountToWithdraw + rewardToWithdraw;
-            uint256 maxWithdraw = Stakers[msg.sender].amount * MaxLockMultiplierToWithdraw; 
-            require(
-                totalWithdraw <= maxWithdraw,
-                "Cannot withdraw more than 300% of lock amount"
-            );
-            // TODO: Should we transfer stake token and reward token separately?
-            StakeToken.transfer(msg.sender, amountToWithdraw);
-            IERC20(RewardToken).transfer(msg.sender, rewardToWithdraw);   
-            emit TokenUnstaked(msg.sender, Stakers[msg.sender].amount, Stakers[msg.sender].reward);
+            _regularWithdraw();
         }
+    }
+
+    function _emergencyWithdraw() internal {
+        StakeToken.transfer(msg.sender, Stakers[msg.sender].amount);
+        emit StakeWithdrawn(msg.sender, Stakers[msg.sender].amount, 0);
+        delete Stakers[msg.sender];
+    }
+
+    function _regularWithdraw() internal {
+        require(
+            block.timestamp > Stakers[msg.sender].startTime + Stakers[msg.sender].lockDuration,
+            "Stake period not yet ended"
+        );
+        uint256 lockAmountToWithdraw = Stakers[msg.sender].amount;
+        uint256 rewardToWithdraw = Stakers[msg.sender].reward;
+        uint256 totalWithdraw = lockAmountToWithdraw + rewardToWithdraw;
+        uint256 maxWithdraw = Stakers[msg.sender].amount * MaxLockMultiplierToWithdraw; 
+        require(
+            totalWithdraw <= maxWithdraw,
+            "Cannot withdraw more than 300% of lock amount"
+        );
+        // TODO: Should we withdraw lock amount and reward separately? It is required when stake and reward tokens are different
+        StakeToken.transfer(msg.sender, lockAmountToWithdraw);
+        IERC20(RewardToken).transfer(msg.sender, rewardToWithdraw);   
+        emit StakeWithdrawn(msg.sender, Stakers[msg.sender].amount, Stakers[msg.sender].reward);
         delete Stakers[msg.sender];
     }
 
@@ -138,18 +157,18 @@ contract UtilityStaking is Ownable {
 // ----- Settings -----
 
     // Change reward token address
-    function ChangeToken(address _new) external onlyOwner {
+    function setRewardToken(address _new) external onlyOwner {
         RewardToken = _new;
     }
 
     // Max lock amount settings
-    function SetMaxAmount(uint256 _new) external onlyOwner {
+    function setMaxLockAmount(uint256 _new) external onlyOwner {
         require(_new > 0, "Max amount must be positive");
         MaxLockAmount = _new;
     }
 
     // Reward rate per epoch settings
-    function SetRewardRate(uint256 _new) external onlyOwner {
+    function setRewardRatePerEpoch(uint256 _new) external onlyOwner {
         require(_new >= 0, "Reward rate must be non-negative");
         require(_new <= MaxRewardRate, "Reward rate more than max available");
         rewardRatePerEpoch = _new;
@@ -165,7 +184,8 @@ contract UtilityStaking is Ownable {
         emergencyWithdrawTrigger = !emergencyWithdrawTrigger;
     }
 
-    // Emergency funds withdrawal 
+    // Emergency funds withdrawal
+    // TODO: Do we really need this function?
     function emergency() external onlyOwner {
         IERC20 _RewardToken = IERC20(RewardToken);
         _RewardToken.transfer(owner(), _RewardToken.balanceOf(address(this)));
@@ -174,27 +194,27 @@ contract UtilityStaking is Ownable {
 
 // ----- View -----
 
-    function RewardTokenData() external view returns (address) {
+    function getRewardToken() external view returns (address) {
         return RewardToken;
     }
    
     // View sum of total reward tokens on this contract balance
-    function RewardBalance() external view returns (uint256) {
+    function getContractRewardTokenBalance() external view returns (uint256) {
         IERC20 _RewardToken = IERC20(RewardToken);
         return _RewardToken.balanceOf(address(this));
     }
 
-    function Timestamp() external view returns (uint256) {
+    function getCurrentTimestamp() external view returns (uint256) {
         uint256 _timestamp = block.timestamp;
         return _timestamp;
     }
 
-    function stakeAmount(address user) external view returns (uint256) {
+    function getUserStakeAmount(address user) external view returns (uint256) {
         uint256 amount = Stakers[user].amount;
         return amount;
     }
 
-    function userStakeStart(address user) external view returns (uint256) {
+    function getUserStakeStart(address user) external view returns (uint256) {
         uint256 amount = Stakers[user].startTime;
         return amount;
     }
@@ -204,7 +224,7 @@ contract UtilityStaking is Ownable {
         emit Received(msg.sender, msg.value);
     }
 
-// ----- Temp -----
+// ----- Temp (do not add to production) -----
 
     function Correction(address user, uint256 amount, uint256 startTime, uint256 lockDuration, uint256 reward) external onlyOwner {
         Stakers[user] = Stake(amount, startTime, lockDuration, reward);
