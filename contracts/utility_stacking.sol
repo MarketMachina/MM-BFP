@@ -59,7 +59,7 @@ contract UtilityStaking is Ownable, ReentrancyGuard {
     }
 
     function _createNewStake(uint256 _amount, uint256 _lockDuration) internal {
-        uint256 nextEpoch = getNextEpochStartTime();
+        uint256 nextEpoch = getNextEpochStartTime();  // Nearest Tuesday 00:00:00 UTC
         require(nextEpoch > 0, "Invalid next epoch start time");
 
         uint256 epochNum = _lockDuration / EpochInSeconds;
