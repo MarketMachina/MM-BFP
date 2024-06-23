@@ -17,6 +17,10 @@ contract UtilityToken is ERC20, ERC20Burnable, AccessControl, Pausable {
     event Burned(address indexed from, uint256 amount);
     event TokensPaused(address indexed by);
     event TokensUnpaused(address indexed by);
+    event MinterAdded(address indexed minter);
+    event MinterRemoved(address indexed minter);
+    event PauserAdded(address indexed pauser);
+    event PauserRemoved(address indexed pauser);
 
     constructor(
         address initialOwner,
@@ -80,17 +84,21 @@ contract UtilityToken is ERC20, ERC20Burnable, AccessControl, Pausable {
 
     function addMinter(address minter) public onlyRole(DEFAULT_ADMIN_ROLE) {
         grantRole(MINTER_ROLE, minter);
+        emit MinterAdded(minter);
     }
 
     function removeMinter(address minter) public onlyRole(DEFAULT_ADMIN_ROLE) {
         revokeRole(MINTER_ROLE, minter);
+        emit MinterRemoved(minter);
     }
 
     function addPauser(address pauser) public onlyRole(DEFAULT_ADMIN_ROLE) {
         grantRole(PAUSER_ROLE, pauser);
+        emit PauserAdded(pauser);
     }
 
     function removePauser(address pauser) public onlyRole(DEFAULT_ADMIN_ROLE) {
         revokeRole(PAUSER_ROLE, pauser);
+        emit PauserRemoved(pauser);
     }
 }
