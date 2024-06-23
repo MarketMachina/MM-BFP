@@ -11,14 +11,21 @@ contract UtilityToken is ERC20, Ownable, Pausable {
 
     event Minted(address indexed to, uint256 amount);
     event Burned(address indexed from, uint256 amount);
+    event TokensPaused(address indexed by);
+    event TokensUnpaused(address indexed by);
 
     constructor(
-        // address initialOwner, uint256 initialSupply
+        address initialOwner,
+        uint256 initialSupply
         ) ERC20("Market Machina", "MACHINA") Ownable(msg.sender) {
-        // require(initialSupply <= maxSupply, "Initial supply exceeds max supply");
-        // _mint(initialOwner, initialSupply);  // Mint initial supply
-        // currentSupply += initialSupply;      // Update current supply
-        // transferOwnership(initialOwner);     // Transfer ownership to initial owner
+        require(initialSupply <= maxSupply, "Initial supply exceeds max supply");
+        _mint(initialOwner, initialSupply);  // Mint initial supply
+        currentSupply = initialSupply;      // Update current supply
+        transferOwnership(initialOwner);     // Transfer ownership to initial owner
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 18;
     }
 
     function mint(uint256 amount) external onlyOwner whenNotPaused {
@@ -45,9 +52,11 @@ contract UtilityToken is ERC20, Ownable, Pausable {
 
     function pause() external onlyOwner {
         _pause();
+        emit TokensPaused(msg.sender);
     }
 
     function unpause() external onlyOwner {
         _unpause();
+        emit TokensUnpaused(msg.sender);
     }
 }
