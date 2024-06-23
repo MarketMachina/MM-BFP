@@ -4,8 +4,9 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
-contract UtilityToken is ERC20, Ownable, Pausable {
+contract UtilityToken is ERC20, ERC20Burnable, Ownable, Pausable {
     uint256 public maxSupply = 1_000_000_000 * 1e18;
     uint256 public currentSupply = 0;
 
@@ -39,15 +40,16 @@ contract UtilityToken is ERC20, Ownable, Pausable {
         emit Minted(msg.sender, amount);
     }
 
-    function burn(uint256 amount) external whenNotPaused {
-        require(amount > 0, "Burn: amount must be greater than zero");
-        require(
-            amount <= balanceOf(msg.sender),
-            "Burn: cannot burn more than balance"
-        );
+    function burn(uint256 amount) public override whenNotPaused {
+        super.burn(amount);
         currentSupply -= amount;
-        _burn(msg.sender, amount);
         emit Burned(msg.sender, amount);
+    }
+
+    function burnFrom(address account, uint256 amount) public override whenNotPaused {
+        super.burnFrom(account, amount);
+        currentSupply -= amount;
+        emit Burned(account, amount);
     }
 
     function pause() external onlyOwner {
