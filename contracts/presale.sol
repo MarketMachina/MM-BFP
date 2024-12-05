@@ -330,12 +330,13 @@ contract Presale is ReentrancyGuard, Ownable {
         uint256 claimAbleAmount;
     }
 
+    IERC20Metadata public USDCInterface;
+
     Aggregator internal aggregatorInterface;
 
     mapping(uint256 => bool) public paused;
     mapping(uint256 => PresaleData) public presale;
     mapping(address => mapping(uint256 => UserData)) public userClaimData;
-    mapping(address => bool) public isExcludeMinToken;
     mapping(address => bool) public isBlackList;
     mapping(address => bool) public isExist;
 
@@ -383,9 +384,11 @@ contract Presale is ReentrancyGuard, Ownable {
 
     constructor(
         address _oracle,
+        address _usdc,
         address _SaleToken
     ) {
         aggregatorInterface = Aggregator(_oracle);
+        USDCInterface = IERC20Metadata(_usdc);
         SaleToken = _SaleToken;
         ETH_MULTIPLIER = (10**18);
         USDC_MULTIPLIER = (10**6);
@@ -477,13 +480,6 @@ contract Presale is ReentrancyGuard, Ownable {
         _;
     }
 
-    function ExcludeAccouctFromMinBuy(address _user, bool _status)
-        external
-        onlyOwner
-    {
-        isExcludeMinToken[_user] = _status;
-    }
-
 
     function changeClaimAddress(address _oldAddress, address _newWallet)
         public
@@ -502,6 +498,68 @@ contract Presale is ReentrancyGuard, Ownable {
 
     function blackListUser(address _user, bool _value) public onlyOwner {
         isBlackList[_user] = _value;
+    }
+
+    
+    function buyWithUSDC(uint256 usdcAmount)
+        external
+        checkPresaleId(currentSale)
+        checkSaleState(currentSale, usdcToTokens(currentSale, usdcAmount))
+        nonReentrant
+        returns (bool)
+    {
+        require(!paused[currentSale], "Presale paused");
+        require(
+            presale[currentSale].Active == true,
+            "Presale is not active yet"
+        );
+        require(!isBlackList[msg.sender], "Account is blackListed");
+        if (!isExist[msg.sender]) {
+            isExist[msg.sender] = true;
+            uniqueBuyers++;
+        }
+        uint256 tokens = usdcToTokens(currentSale, usdcAmount);
+        presale[currentSale].Sold += tokens;
+        presale[currentSale].amountRaised += usdcAmount;
+        overalllRaised += usdcAmount;
+
+        if (userClaimData[_msgSender()][currentSale].claimAbleAmount > 0) {
+            userClaimData[_msgSender()][currentSale].claimAbleAmount += tokens;
+            userClaimData[_msgSender()][currentSale].investedAmount += usdcAmount;
+        } else {
+            userClaimData[_msgSender()][currentSale] = UserData(
+                usdcAmount,
+                0,
+                tokens
+            );
+        }
+
+        uint256 ourAllowance = USDCInterface.allowance(
+            _msgSender(),
+            address(this)
+        );
+        require(
+            usdcAmount <= ourAllowance,
+            "Make sure to add enough allowance"
+        );
+        (bool success, ) = address(USDCInterface).call(
+            abi.encodeWithSignature(
+                "transferFrom(address,address,uint256)",
+                _msgSender(),
+                fundReceiver,
+                usdcAmount
+            )
+        );
+        require(success, "Token payment failed");
+        emit TokensBought(
+            _msgSender(),
+            currentSale,
+            address(USDCInterface),
+            tokens,
+            usdcAmount,
+            block.timestamp
+        );
+        return true;
     }
 
     function buyWithEth()
@@ -552,6 +610,11 @@ contract Presale is ReentrancyGuard, Ownable {
             block.timestamp
         );
         return true;
+    }
+
+    function changeUSDCToken(address _newAddress) external onlyOwner {
+        require(_newAddress != address(0), "Zero token address");
+        USDCInterface = IERC20Metadata(_newAddress);
     }
 
     function ethBuyHelper(uint256 _id, uint256 amount)
