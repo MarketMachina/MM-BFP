@@ -33,6 +33,26 @@ contract TokenVesting {
         totalAmount = _totalAmount;
         totalPeriods = _totalPeriods;
     }
+    /**
+     * @dev Returns the time until the next release.
+     */
+    function timeUntilNextRelease() public view returns (uint256) {
+        if (releasableAmount() == 0) {
+            return 0;
+        }
+
+        if (block.timestamp < start) {
+            return start - block.timestamp;
+        }
+        
+        uint256 currentPeriod = (block.timestamp - start) / periodDuration;
+        if (currentPeriod >= totalPeriods) {
+            return 0;
+        }
+        
+        uint256 nextReleaseTime = start + ((currentPeriod + 1) * periodDuration);
+        return nextReleaseTime - block.timestamp;
+    }
 
     /**
      * @dev Returns the amount of tokens that can be released at the current time.
