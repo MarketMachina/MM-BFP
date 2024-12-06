@@ -30,7 +30,11 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
         _mint(initialOwner, initialSupply);
     }
 
-    function _update(address from, address to, uint256 value) internal virtual override(ERC20, ERC20Pausable) {
+    function _update(
+        address from,
+        address to,
+        uint256 value
+    ) internal virtual override(ERC20, ERC20Pausable) {
         super._update(from, to, value);
     }
 
