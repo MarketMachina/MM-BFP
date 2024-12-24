@@ -48,7 +48,7 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
     ) internal virtual override(ERC20, ERC20Pausable) {
         if (
             block.timestamp <= (feeStartTimestamp + FEE_DURATION) &&
-            isSell(from, to) &&
+            isSellToPool(from, to) &&
             value > 0
         ) {
             uint256 feeAmount = (value * SELL_FEE_PERCENT) / 100;
@@ -62,7 +62,7 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
         }
     }
 
-    function isSell(address from, address to) internal view returns (bool) {
+    function isSellToPool(address from, address to) internal view returns (bool) {
         if (from == initialOwner) {
             return false;
         }
