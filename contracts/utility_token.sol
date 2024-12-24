@@ -10,24 +10,35 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    uint256 public immutable maxSupply;
+    uint256 public constant SELL_FEE_PERCENT = 5;
+    uint256 public constant FEE_DURATION = 65 days;
+    uint256 public immutable feeStartTimestamp;
 
+    uint256 public immutable maxSupply;
+    address public immutable initialOwner;
+
+    mapping(address => bool) public isLiquidityPool;
+
+    event LiquidityPoolUpdated(address indexed pool, bool status);
     event Minted(address indexed to, uint256 amount);
     event Burned(address indexed from, uint256 amount);
 
     constructor(
-        address initialOwner,
+        address _initialOwner,
         uint256 initialSupply
     ) ERC20("Market Machina", "MACHINA") {
-        require(initialOwner != address(0), "Invalid initial owner address");
+        require(_initialOwner != address(0), "Invalid initial owner address");
         maxSupply = 1_000_000_000 * 1e18;
         require(initialSupply <= maxSupply, "Initial supply exceeds max supply");
 
-        _grantRole(DEFAULT_ADMIN_ROLE, initialOwner);
-        _grantRole(MINTER_ROLE, initialOwner);
-        _grantRole(PAUSER_ROLE, initialOwner);
+        initialOwner = _initialOwner;
+        _grantRole(DEFAULT_ADMIN_ROLE, _initialOwner);
+        _grantRole(MINTER_ROLE, _initialOwner);
+        _grantRole(PAUSER_ROLE, _initialOwner);
 
-        _mint(initialOwner, initialSupply);
+        feeStartTimestamp = block.timestamp;
+        _mint(_initialOwner, initialSupply);
+        emit Minted(_initialOwner, initialSupply);
     }
 
     function _update(
@@ -35,7 +46,27 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
         address to,
         uint256 value
     ) internal virtual override(ERC20, ERC20Pausable) {
-        super._update(from, to, value);
+        if (
+            block.timestamp <= (feeStartTimestamp + FEE_DURATION) &&
+            isSell(from, to) &&
+            value > 0
+        ) {
+            uint256 feeAmount = (value * SELL_FEE_PERCENT) / 100;
+            uint256 remaining = value - feeAmount;
+
+            super._update(from, initialOwner, feeAmount);
+
+            super._update(from, to, remaining);
+        } else {
+            super._update(from, to, value);
+        }
+    }
+
+    function isSell(address from, address to) internal view returns (bool) {
+        if (from == initialOwner) {
+            return false;
+        }
+        return isLiquidityPool[to];
     }
 
     function decimals() public pure override returns (uint8) {
@@ -76,5 +107,11 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
 
     function remainingMintableSupply() public view returns (uint256) {
         return maxSupply - totalSupply();
+    }
+
+    function setLiquidityPool(address pool, bool status) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(pool != address(0), "Invalid pool address");
+        isLiquidityPool[pool] = status;
+        emit LiquidityPoolUpdated(pool, status);
     }
 }
