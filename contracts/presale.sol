@@ -417,6 +417,7 @@ contract Presale is ReentrancyGuard, Ownable {
     }
 
     function setPresaleStage(uint256 _id) public onlyOwner {
+        require(presale[_id].price > 0, "Invalid presale ID");
         if (currentSale != 0) {
             presale[currentSale].endTime = block.timestamp;
             presale[currentSale].Active = false;
@@ -485,6 +486,8 @@ contract Presale is ReentrancyGuard, Ownable {
         public
         onlyOwner
     {
+        require(_oldAddress != address(0) && _newWallet != address(0), "Invalid addresses");
+        require(_oldAddress != _newWallet, "Addresses are the same");
         for (uint256 i = 1; i < presaleId; i++) {
             require(isExist[_oldAddress], "User not a participant");
             userClaimData[_newWallet][i].claimAbleAmount = userClaimData[
