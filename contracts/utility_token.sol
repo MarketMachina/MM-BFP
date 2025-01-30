@@ -23,6 +23,8 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
     mapping(bytes32 => uint256) public confirmationsCount;
     mapping(bytes32 => mapping(address => bool)) public isConfirmed;
 
+    uint256 public constant MIN_CONFIRMATIONS = 2;
+
     event LiquidityPoolUpdated(address indexed pool, bool status);
     event Minted(address indexed to, uint256 amount);
     event Burned(address indexed from, uint256 amount);
@@ -117,7 +119,7 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
 
     function unpause() external {
         bytes32 txHash = keccak256(abi.encode("unpause"));
-        require(confirmationsCount[txHash] >= 2, "Requires 2 confirmations");
+        require(confirmationsCount[txHash] >= MIN_CONFIRMATIONS, "Not enough confirmations");
         _unpause();
         _clearConfirmations(txHash);
     }
@@ -144,14 +146,14 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
 
     function grantRole(bytes32 role, address account) public override {
         bytes32 txHash = keccak256(abi.encode(role, account, "grant"));
-        require(confirmationsCount[txHash] >= 2, "Requires 2 confirmations");
+        require(confirmationsCount[txHash] >= MIN_CONFIRMATIONS, "Not enough confirmations");
         super.grantRole(role, account);
         _clearConfirmations(txHash);
     }
 
     function revokeRole(bytes32 role, address account) public override {
         bytes32 txHash = keccak256(abi.encode(role, account, "revoke"));
-        require(confirmationsCount[txHash] >= 2, "Requires 2 confirmations");
+        require(confirmationsCount[txHash] >= MIN_CONFIRMATIONS, "Not enough confirmations");
         super.revokeRole(role, account);
         _clearConfirmations(txHash);
     }
