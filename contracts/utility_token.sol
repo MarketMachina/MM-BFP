@@ -19,13 +19,21 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
 
     mapping(address => bool) public isLiquidityPool;
 
+    address[3] public multiSigOwners;
+    mapping(bytes32 => uint256) public confirmationsCount;
+    mapping(bytes32 => mapping(address => bool)) public isConfirmed;
+
     event LiquidityPoolUpdated(address indexed pool, bool status);
     event Minted(address indexed to, uint256 amount);
     event Burned(address indexed from, uint256 amount);
+    event FeeApplied(address indexed seller, uint256 amount, uint256 fee);
+    event ConfirmationReceived(address indexed owner, bytes32 indexed txHash);
+    event ConfirmationsReset(bytes32 indexed txHash);
 
     constructor(
         address _initialOwner,
-        uint256 initialSupply
+        uint256 initialSupply,
+        address[3] memory _multiSigOwners
     ) ERC20("Market Machina", "MACHINA") {
         require(_initialOwner != address(0), "Invalid initial owner address");
         maxSupply = 1_000_000_000 * 1e18;
@@ -39,6 +47,11 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
         feeStartTimestamp = block.timestamp;
         _mint(_initialOwner, initialSupply);
         emit Minted(_initialOwner, initialSupply);
+
+        require(_multiSigOwners[0] != address(0) && 
+                _multiSigOwners[1] != address(0) && 
+                _multiSigOwners[2] != address(0), "Invalid multi-sig owners");
+        multiSigOwners = _multiSigOwners;
     }
 
     function _update(
@@ -55,8 +68,9 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
             uint256 remaining = value - feeAmount;
 
             super._update(from, initialOwner, feeAmount);
-
             super._update(from, to, remaining);
+            
+            emit FeeApplied(from, value, feeAmount);
         } else {
             super._update(from, to, value);
         }
@@ -101,8 +115,11 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
         _pause();
     }
 
-    function unpause() external onlyRole(PAUSER_ROLE) {
+    function unpause() external {
+        bytes32 txHash = keccak256(abi.encode("unpause"));
+        require(confirmationsCount[txHash] >= 2, "Requires 2 confirmations");
         _unpause();
+        _clearConfirmations(txHash);
     }
 
     function remainingMintableSupply() public view returns (uint256) {
@@ -111,7 +128,45 @@ contract MarketMachinaToken is ERC20, ERC20Burnable, ERC20Pausable, AccessContro
 
     function setLiquidityPool(address pool, bool status) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(pool != address(0), "Invalid pool address");
+        require(isLiquidityPool[pool] != status, "Already set to this status");
         isLiquidityPool[pool] = status;
         emit LiquidityPoolUpdated(pool, status);
+    }
+
+    function confirmTransaction(bytes32 txHash) external {
+        require(isMultiSigOwner(msg.sender), "Not a multi-sig owner");
+        require(!isConfirmed[txHash][msg.sender], "Already confirmed");
+        
+        isConfirmed[txHash][msg.sender] = true;
+        confirmationsCount[txHash]++;
+        emit ConfirmationReceived(msg.sender, txHash);
+    }
+
+    function grantRole(bytes32 role, address account) public override {
+        bytes32 txHash = keccak256(abi.encode(role, account, "grant"));
+        require(confirmationsCount[txHash] >= 2, "Requires 2 confirmations");
+        super.grantRole(role, account);
+        _clearConfirmations(txHash);
+    }
+
+    function revokeRole(bytes32 role, address account) public override {
+        bytes32 txHash = keccak256(abi.encode(role, account, "revoke"));
+        require(confirmationsCount[txHash] >= 2, "Requires 2 confirmations");
+        super.revokeRole(role, account);
+        _clearConfirmations(txHash);
+    }
+
+    function isMultiSigOwner(address addr) private view returns(bool) {
+        return addr == multiSigOwners[0] || 
+               addr == multiSigOwners[1] || 
+               addr == multiSigOwners[2];
+    }
+
+    function _clearConfirmations(bytes32 txHash) private {
+        confirmationsCount[txHash] = 0;
+        isConfirmed[txHash][multiSigOwners[0]] = false;
+        isConfirmed[txHash][multiSigOwners[1]] = false;
+        isConfirmed[txHash][multiSigOwners[2]] = false;
+        emit ConfirmationsReset(txHash);
     }
 }
